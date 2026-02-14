@@ -147,7 +147,7 @@
         <div class="tabs">
             <button class="tab-btn active" data-tab="tide">물때/조위</button>
             <button class="tab-btn" data-tab="current">조류</button>
-            <button class="tab-btn" data-tab="coord-current">📍 좌표 조류</button>
+            <button class="tab-btn" data-tab="coord-current">📍 낚시포인트</button>
         </div>
 
         <!-- Tide Tab -->
@@ -178,41 +178,43 @@
             </div>
         </div>
 
-        <!-- Coordinate Current Tab -->
+        <!-- Fishing Port Tab -->
         <div class="tab-content" id="tab-coord-current">
             <div class="card">
-                <div class="card-title">📍 좌표 기반 조류 조회</div>
+                <div class="card-title">📍 낚시 포인트 조회</div>
                 <div class="coord-controls">
-                    <div class="control-group" style="flex:2; min-width:160px;">
-                        <label>낚시 포인트 <span class="port-badge" id="portRegion">프리셋</span></label>
+                    <div class="control-group" style="flex:2; min-width:200px;">
+                        <label>낚시 포인트 <span class="port-badge" id="portRegion">선택</span></label>
                         <select id="fishingPortSelect" onchange="onFishingPortChange()">
-                            <option value="">직접 입력</option>
+                            <option value="">낚시 포인트를 선택하세요</option>
                         </select>
-                    </div>
-                    <div class="control-group">
-                        <label>위도 (lat)</label>
-                        <input type="number" id="coordLat" step="0.01" min="32" max="39" placeholder="36.38" />
-                    </div>
-                    <div class="control-group">
-                        <label>경도 (lon)</label>
-                        <input type="number" id="coordLon" step="0.01" min="124" max="132" placeholder="126.47" />
                     </div>
                     <div class="control-group" style="flex:0;">
                         <label>&nbsp;</label>
-                        <button class="btn" id="coordSearchBtn" onclick="fetchKhoaCurrentPoint()">조회</button>
+                        <button class="btn" id="coordSearchBtn" onclick="fetchPortData()">조회</button>
                     </div>
                 </div>
-                <div style="font-size:0.78em;color:var(--muted);margin-top:-8px;margin-bottom:12px;">
-                    ※ 관측소가 없는 지역(오천항, 삼길포항 등)의 조류를 좌표로 직접 조회합니다. (KHOA 수치조류도)
-                </div>
+                <div id="portMapping" style="font-size:0.82em;color:var(--muted);margin-top:-8px;margin-bottom:4px;"></div>
             </div>
-            <div class="card">
-                <div class="card-title">🌀 좌표 조류 정보 (유향/유속)</div>
-                <div id="khoaCurrentInfo"><div style="text-align:center;color:var(--muted);padding:20px;">낚시 포인트를 선택하거나 좌표를 입력 후 조회하세요</div></div>
+            <!-- 고저조 요약 -->
+            <div class="card" id="portTideSummaryCard" style="display:none;">
+                <div class="card-title">📊 고저조 요약 <span id="portTideStation" class="port-badge"></span></div>
+                <div id="portTideSummary"></div>
             </div>
-            <div class="card">
-                <div class="card-title">📈 좌표 조류 유속 그래프</div>
-                <div class="chart-container"><canvas id="khoaCurrentChart"></canvas></div>
+            <!-- 조위 그래프 -->
+            <div class="card" id="portTideChartCard" style="display:none;">
+                <div class="card-title">📈 조위 변화 그래프</div>
+                <div class="chart-container"><canvas id="portTideChart"></canvas></div>
+            </div>
+            <!-- 조류 테이블 -->
+            <div class="card" id="portCurrentCard" style="display:none;">
+                <div class="card-title">🌀 조류 정보 <span id="portCurrentStation" class="port-badge"></span></div>
+                <div id="portCurrentInfo"></div>
+            </div>
+            <!-- 조류 그래프 -->
+            <div class="card" id="portCurrentChartCard" style="display:none;">
+                <div class="card-title">📈 조류 유속 그래프</div>
+                <div class="chart-container"><canvas id="portCurrentChart"></canvas></div>
             </div>
         </div>
 
@@ -352,33 +354,35 @@
         }
     ];
 
-    // ==================== 낚시 포인트 프리셋 (좌표 기반 조류 조회용) ====================
+    // ==================== 낚시 포인트 프리셋 (가장 가까운 관측소/조류예보점 매핑) ====================
     const FISHING_PORTS = [
-        { name: '오천항', lat: 36.38, lon: 126.47, region: '충남' },
-        { name: '삼길포항', lat: 36.33, lon: 126.42, region: '충남' },
-        { name: '대천항', lat: 36.32, lon: 126.51, region: '충남' },
-        { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남' },
-        { name: '무창포', lat: 36.27, lon: 126.54, region: '충남' },
-        { name: '안흥외항', lat: 36.67, lon: 126.13, region: '충남' },
-        { name: '간월도', lat: 36.62, lon: 126.37, region: '충남' },
-        { name: '궁리포구', lat: 36.78, lon: 126.12, region: '충남' },
-        { name: '격포항', lat: 35.62, lon: 126.47, region: '전북' },
-        { name: '부안변산', lat: 35.67, lon: 126.51, region: '전북' },
-        { name: '비응항', lat: 35.97, lon: 126.62, region: '전북' },
-        { name: '선유도', lat: 35.82, lon: 126.42, region: '전북' },
-        { name: '녹동항', lat: 34.48, lon: 127.08, region: '전남' },
-        { name: '마량항', lat: 34.38, lon: 126.38, region: '전남' },
-        { name: '하효항', lat: 33.23, lon: 126.58, region: '제주' },
-        { name: '김녕항', lat: 33.55, lon: 126.77, region: '제주' },
-        { name: '한림항', lat: 33.42, lon: 126.27, region: '제주' },
-        { name: '대포항', lat: 35.16, lon: 129.18, region: '경남' },
-        { name: '구룡포항', lat: 35.98, lon: 129.57, region: '경북' },
-        { name: '축산항', lat: 36.43, lon: 129.45, region: '경북' },
-        { name: '장호항', lat: 37.28, lon: 129.33, region: '강원' },
-        { name: '임원항', lat: 37.25, lon: 129.35, region: '강원' },
+        { name: '오천항', lat: 36.38, lon: 126.47, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
+        { name: '삼길포항', lat: 36.33, lon: 126.42, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
+        { name: '대천항', lat: 36.32, lon: 126.51, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
+        { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
+        { name: '무창포', lat: 36.27, lon: 126.54, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
+        { name: '안흥외항', lat: 36.67, lon: 126.13, region: '충남', station: 'DT_0067', stationName: '안흥', current: '07TA05', currentName: '안흥' },
+        { name: '간월도', lat: 36.62, lon: 126.37, region: '충남', station: 'DT_0017', stationName: '대산', current: '17LTC06', currentName: '가로림만입구' },
+        { name: '궁리포구', lat: 36.78, lon: 126.12, region: '충남', station: 'DT_0050', stationName: '태안', current: '07TA03', currentName: '태안' },
+        { name: '격포항', lat: 35.62, lon: 126.47, region: '전북', station: 'DT_0068', stationName: '위도', current: '15LTC03', currentName: '위도동측' },
+        { name: '부안변산', lat: 35.67, lon: 126.51, region: '전북', station: 'DT_0068', stationName: '위도', current: '15LTC03', currentName: '위도동측' },
+        { name: '비응항', lat: 35.97, lon: 126.62, region: '전북', station: 'DT_0018', stationName: '군산', current: '12JB14', currentName: '군산항입구' },
+        { name: '선유도', lat: 35.82, lon: 126.42, region: '전북', station: 'DT_0018', stationName: '군산', current: '06GS07', currentName: '고군산군도' },
+        { name: '녹동항', lat: 34.48, lon: 127.08, region: '전남', station: 'DT_0026', stationName: '고흥발포', current: '06YS09', currentName: '거금수도' },
+        { name: '마량항', lat: 34.38, lon: 126.38, region: '전남', station: 'DT_0007', stationName: '목포', current: '22LTC12', currentName: '마량항' },
+        { name: '하효항', lat: 33.23, lon: 126.58, region: '제주', station: 'DT_0010', stationName: '서귀포', current: '08JJ07', currentName: '서귀포' },
+        { name: '김녕항', lat: 33.55, lon: 126.77, region: '제주', station: 'DT_0022', stationName: '성산포', current: '08JJ03', currentName: '성산포' },
+        { name: '한림항', lat: 33.42, lon: 126.27, region: '제주', station: 'DT_0004', stationName: '제주', current: '08JJ13', currentName: '애월항북측' },
+        { name: '대포항', lat: 35.16, lon: 129.18, region: '경남', station: 'DT_0005', stationName: '부산', current: '18LTC13', currentName: '해운대' },
+        { name: '구룡포항', lat: 35.98, lon: 129.57, region: '경북', station: 'DT_0091', stationName: '포항', current: '17LTC05', currentName: '울도' },
+        { name: '축산항', lat: 36.43, lon: 129.45, region: '경북', station: 'DT_0011', stationName: '후포', current: '17LTC07', currentName: '울도남측' },
+        { name: '장호항', lat: 37.28, lon: 129.33, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
+        { name: '임원항', lat: 37.25, lon: 129.35, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
     ];
 
     let khoaCurrentChart = null;
+    let portTideChart = null;
+    let portCurrentChart = null;
 
     // ==================== 관측소/조류 연동 ====================
     function getRegionByStationCode(code) {
@@ -504,17 +508,10 @@
         const currentSel = document.getElementById('currentSelect');
 
         if (item.type === 'port') {
-            // 낚시 포인트 → 좌표 조류 탭으로 전환
-            document.getElementById('coordLat').value = item.lat;
-            document.getElementById('coordLon').value = item.lon;
-            // 프리셋 드롭다운에서도 선택
+            // 낚시 포인트 → 낚시포인트 탭으로 전환
             const portSel = document.getElementById('fishingPortSelect');
-            for (let i = 0; i < portSel.options.length; i++) {
-                if (portSel.options[i].textContent.includes(item.name)) {
-                    portSel.selectedIndex = i; break;
-                }
-            }
-            document.getElementById('portRegion').textContent = item.regionLabel;
+            portSel.value = item.name;
+            onFishingPortChange();
             // 탭 전환
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -523,6 +520,8 @@
             // 검색창 닫기
             document.getElementById('searchInput').value = item.name;
             document.getElementById('searchResults').classList.remove('show');
+            // 자동 조회
+            fetchPortData();
             return;
         }
 
@@ -946,7 +945,6 @@
     // ==================== 낚시 포인트 프리셋 ====================
     function buildFishingPortSelect() {
         const sel = document.getElementById('fishingPortSelect');
-        // 지역별 그룹
         const regions = {};
         for (const port of FISHING_PORTS) {
             if (!regions[port.region]) regions[port.region] = [];
@@ -957,8 +955,8 @@
             og.label = region;
             for (const port of ports) {
                 const opt = document.createElement('option');
-                opt.value = `${port.lat},${port.lon}`;
-                opt.textContent = `${port.name} (${port.lat}, ${port.lon})`;
+                opt.value = port.name;
+                opt.textContent = port.name;
                 opt.dataset.region = port.region;
                 og.appendChild(opt);
             }
@@ -966,108 +964,244 @@
         }
     }
 
+    function getSelectedPort() {
+        const name = document.getElementById('fishingPortSelect').value;
+        return FISHING_PORTS.find(p => p.name === name) || null;
+    }
+
     function onFishingPortChange() {
-        const sel = document.getElementById('fishingPortSelect');
-        const val = sel.value;
-        if (!val) {
-            document.getElementById('coordLat').value = '';
-            document.getElementById('coordLon').value = '';
-            document.getElementById('portRegion').textContent = '프리셋';
+        const port = getSelectedPort();
+        const mappingEl = document.getElementById('portMapping');
+        if (!port) {
+            document.getElementById('portRegion').textContent = '선택';
+            mappingEl.innerHTML = '';
             return;
         }
-        const [lat, lon] = val.split(',');
-        document.getElementById('coordLat').value = lat;
-        document.getElementById('coordLon').value = lon;
-        const opt = sel.options[sel.selectedIndex];
-        document.getElementById('portRegion').textContent = opt.dataset.region || '프리셋';
+        document.getElementById('portRegion').textContent = port.region;
+        const currentInfo = port.current ? `조류: <strong style="color:var(--accent)">${port.currentName}</strong> (${port.current})` : '조류: <span style="color:var(--muted)">예보점 없음</span>';
+        mappingEl.innerHTML = `연결 관측소 → 조위: <strong style="color:var(--primary)">${port.stationName}</strong> (${port.station}) · ${currentInfo}`;
     }
 
-    // ==================== KHOA API 호출 (직접 호출 - 공개 키 사용) ====================
-    const KHOA_API_BASE = 'https://www.khoa.go.kr/api/oceangrid';
-    const KHOA_SERVICE_KEY = 'wldhxng34hkddbsgm81lwldhxng34hkddbsgm81l==';
+    // ==================== 낚시 포인트 전체 데이터 조회 ====================
+    async function fetchPortData() {
+        const port = getSelectedPort();
+        if (!port) {
+            showToast('낚시 포인트를 선택하세요', true);
+            return;
+        }
 
-    async function khoaApiCall(apiPath, params) {
-        const url = new URL(`${KHOA_API_BASE}/${apiPath}/search.do`);
-        url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
-        url.searchParams.set('ResultType', 'json');
-        Object.entries(params).forEach(([k, v]) => {
-            if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
-        });
-        const resp = await fetch(url.toString());
-        if (!resp.ok) throw new Error(`KHOA HTTP ${resp.status}`);
-        const json = await resp.json();
-        if (!json.result || !json.result.data) throw new Error('KHOA API에서 데이터가 없습니다');
-        return json.result.data;
-    }
-
-    // ==================== 좌표 조류 조회 (tidalCurrentPoint) ====================
-    async function fetchKhoaCurrentPoint() {
-        const lat = document.getElementById('coordLat').value;
-        const lon = document.getElementById('coordLon').value;
-        const date = getDateStr();
-        const infoEl = document.getElementById('khoaCurrentInfo');
         const btn = document.getElementById('coordSearchBtn');
-
-        if (!lat || !lon) {
-            showToast('위도/경도를 입력하세요', true);
-            return;
-        }
-
         btn.disabled = true; btn.textContent = '조회 중...';
-        infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>좌표 조류 데이터 로딩...</div></div>';
+
+        // 카드 표시
+        document.getElementById('portTideSummaryCard').style.display = '';
+        document.getElementById('portTideChartCard').style.display = '';
+        document.getElementById('portTideStation').textContent = `${port.stationName} 관측소`;
+
+        const promises = [
+            fetchPortTideHighLow(port),
+            fetchPortTideLevel(port)
+        ];
+
+        if (port.current) {
+            document.getElementById('portCurrentCard').style.display = '';
+            document.getElementById('portCurrentChartCard').style.display = '';
+            document.getElementById('portCurrentStation').textContent = `${port.currentName} 예보점`;
+            promises.push(fetchPortCurrentData(port));
+        } else {
+            document.getElementById('portCurrentCard').style.display = 'none';
+            document.getElementById('portCurrentChartCard').style.display = 'none';
+        }
 
         try {
-            const data = await khoaApiCall('tidalCurrentPoint', {
-                Sdate: date, SHour: '00', SMinute: '00',
-                Edate: date, EHour: '23', EMinute: '59',
-                lon, lat
+            await Promise.all(promises);
+        } catch(e) { console.error('포인트 조회 오류:', e); }
+        finally { btn.disabled = false; btn.textContent = '조회'; }
+    }
+
+    // ==================== 낚시 포인트: 고저조 ====================
+    async function fetchPortTideHighLow(port) {
+        const summaryEl = document.getElementById('portTideSummary');
+        summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
+
+        try {
+            const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
+                obsCode: port.station, reqDate: getDateStr()
             });
 
-            if (!data || data.length === 0) {
-                infoEl.innerHTML = '<div class="error-msg">해당 좌표에 조류 데이터가 없습니다. 좌표를 확인해주세요.</div>';
-                renderKhoaCurrentChart([]);
+            if (!items || items.length === 0) {
+                summaryEl.innerHTML = '<div class="error-msg">고저조 데이터가 없습니다.</div>';
                 return;
             }
 
-            renderKhoaCurrentTable(data, infoEl, lat, lon);
-            renderKhoaCurrentChart(data);
+            const dateStr = getDateStr();
+            const datePrefix = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+            const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
+            const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
+
+            const highs = displayItems.filter(i => parseInt(i.extrSe) % 2 === 1);
+            const lows = displayItems.filter(i => parseInt(i.extrSe) % 2 === 0);
+            const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => h.predcTdlvVl)) : null;
+            const minLow = lows.length > 0 ? Math.min(...lows.map(l => l.predcTdlvVl)) : null;
+            const diff = (maxHigh !== null && minLow !== null) ? maxHigh - minLow : null;
+            const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
+            const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
+
+            summaryEl.innerHTML = `
+                <div class="tide-summary">
+                    <div class="tide-item high"><div class="label">최고조위</div><div class="value">${maxHigh !== null ? maxHigh.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div><div class="time">${bestHigh ? bestHigh.predcDt.substring(11, 16) : '-'}</div></div>
+                    <div class="tide-item low"><div class="label">최저조위</div><div class="value">${minLow !== null ? minLow.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div><div class="time">${bestLow ? bestLow.predcDt.substring(11, 16) : '-'}</div></div>
+                    <div class="tide-item diff"><div class="label">조차</div><div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div><div class="time">${diff !== null ? (diff / 100).toFixed(2) + ' m' : '-'}</div></div>
+                </div>
+                <div class="tide-detail-list" style="margin-top:12px;">
+                    ${displayItems.map(i => {
+                        const isHigh = parseInt(i.extrSe) % 2 === 1;
+                        return `<div class="tide-tag ${isHigh ? 'high' : 'low'}">${isHigh ? '고조' : '저조'} ${i.predcDt.substring(11, 16)} · ${i.predcTdlvVl.toFixed(0)}cm</div>`;
+                    }).join('')}
+                </div>`;
+
+            window._portHlData = displayItems;
         } catch(e) {
-            infoEl.innerHTML = `<div class="error-msg">좌표 조류 오류: ${e.message}</div>`;
-            renderKhoaCurrentChart([]);
-        } finally {
-            btn.disabled = false; btn.textContent = '조회';
+            summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${e.message}</div>`;
         }
     }
 
-    function renderKhoaCurrentTable(items, el, lat, lon) {
-        const maxSpeed = Math.max(...items.map(i => parseFloat(i.current_speed) || 0), 1);
+    // ==================== 낚시 포인트: 조위 그래프 ====================
+    async function fetchPortTideLevel(port) {
+        try {
+            const items = await apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                obsCode: port.station, reqDate: getDateStr()
+            });
 
-        // 10분 간격 샘플링 (데이터가 많을 수 있음)
-        const step = items.length > 50 ? Math.floor(items.length / 50) : 1;
-        const filtered = items.filter((_, idx) => idx % step === 0);
+            if (!items || items.length === 0) {
+                renderPortTideChart([], []); return;
+            }
 
+            const labels = items.map(d => d.obsrvnDt.substring(11, 16));
+            const predicted = items.map(d => d.bscTdlvHgt);
+            const actual = items.map(d => d.tdlvHgt);
+
+            let annotations = {};
+            const hlData = window._portHlData || [];
+            hlData.forEach((item, idx) => {
+                const time = item.predcDt.substring(11, 16);
+                const nearIdx = labels.findIndex(l => {
+                    const [h1, m1] = l.split(':').map(Number);
+                    const [h2, m2] = time.split(':').map(Number);
+                    return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) <= 5;
+                });
+                if (nearIdx < 0) return;
+                const isHigh = parseInt(item.extrSe) % 2 === 1;
+                annotations['hl_' + idx] = {
+                    type: 'point', xValue: nearIdx, yValue: item.predcTdlvVl,
+                    backgroundColor: isHigh ? 'rgba(255,107,107,0.8)' : 'rgba(78,205,196,0.8)',
+                    radius: 7, borderColor: '#fff', borderWidth: 2,
+                };
+                annotations['hl_label_' + idx] = {
+                    type: 'label', xValue: nearIdx,
+                    yValue: item.predcTdlvVl + (isHigh ? 20 : -20),
+                    content: `${isHigh ? '고조' : '저조'} ${item.predcTdlvVl.toFixed(0)}cm`,
+                    color: isHigh ? '#ff6b6b' : '#4ecdc4',
+                    font: { size: 11, weight: 'bold' },
+                };
+            });
+
+            renderPortTideChart(labels, predicted, actual, annotations);
+        } catch(e) {
+            console.error('포인트 조위 그래프 오류:', e);
+            renderPortTideChart([], []);
+        }
+    }
+
+    function renderPortTideChart(labels, predicted, actual, annotations = {}) {
+        const ctx = document.getElementById('portTideChart').getContext('2d');
+        if (portTideChart) portTideChart.destroy();
+        if (labels.length === 0) { portTideChart = null; return; }
+
+        const grad = ctx.createLinearGradient(0, 0, 0, 320);
+        grad.addColorStop(0, 'rgba(79,195,247,0.3)');
+        grad.addColorStop(1, 'rgba(79,195,247,0.02)');
+
+        const datasets = [{
+            label: '예측 조위 (cm)', data: predicted,
+            borderColor: '#4fc3f7', backgroundColor: grad,
+            borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+        }];
+
+        if (actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i])) {
+            datasets.push({
+                label: '실측 조위 (cm)', data: actual,
+                borderColor: '#ffa726', borderWidth: 1.5, borderDash: [4, 4],
+                fill: false, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+            });
+        }
+
+        portTideChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { display: datasets.length > 1, labels: { color: '#7a8ba3', font: { size: 11 } } },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#4fc3f7',
+                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
+                        callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} cm` }
+                    },
+                    annotation: { annotations }
+                },
+                scales: {
+                    x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                }
+            }
+        });
+    }
+
+    // ==================== 낚시 포인트: 조류 ====================
+    async function fetchPortCurrentData(port) {
+        const infoEl = document.getElementById('portCurrentInfo');
+        infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>조류 데이터 로딩...</div></div>';
+
+        try {
+            const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+                obsCode: port.current, reqDate: getDateStr()
+            });
+
+            if (!items || items.length === 0) {
+                infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다.</div>';
+                renderPortCurrentChart([]); return;
+            }
+
+            const filtered = items.filter((_, idx) => idx % 10 === 0);
+            renderPortCurrentTable(filtered, infoEl, port);
+            renderPortCurrentChart(filtered);
+        } catch(e) {
+            infoEl.innerHTML = `<div class="error-msg">조류 오류: ${e.message}</div>`;
+            renderPortCurrentChart([]);
+        }
+    }
+
+    function renderPortCurrentTable(items, el, port) {
+        const maxSpeed = Math.max(...items.map(i => parseFloat(i.crsp) || 0), 1);
         el.innerHTML = `
             <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
-                좌표: <strong style="color:var(--text)">${lat}, ${lon}</strong> ·
-                총 ${items.length}건 (${filtered.length}건 표시)
+                ${port.name} → 조류 예보점: <strong style="color:var(--text)">${port.currentName}</strong> (${port.current}) · ${items.length}건
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
-                <thead><tr><th>시간</th><th>유향 (°)</th><th>유속 (cm/s)</th><th>창/낙</th><th>세기</th></tr></thead>
+                <thead><tr><th>시간</th><th>유향</th><th>유속 (cm/s)</th><th>세기</th></tr></thead>
                 <tbody>
-                    ${filtered.map(item => {
-                        // obs_date format: "2016-08-10 02:30:00"
-                        const time = item.obs_date ? item.obs_date.substring(11, 16) : '-';
-                        const speed = parseFloat(item.current_speed) || 0;
-                        const dir = item.current_dir || '-';
-                        const type = item.type === '1' ? '창조' : item.type === '2' ? '낙조' : item.type || '-';
+                    ${items.map(item => {
+                        const time = item.predcDt ? item.predcDt.substring(11, 16) : '-';
+                        const speed = parseFloat(item.crsp) || 0;
                         const pct = (speed / maxSpeed) * 100;
                         const color = getSpeedColor(speed);
                         return `<tr>
                             <td>${time}</td>
-                            <td style="color:${color};">${dir}°</td>
+                            <td style="color:${color};">${item.crdir || '-'}</td>
                             <td>${speed.toFixed(1)}</td>
-                            <td><span style="color:${item.type === '1' ? 'var(--high)' : 'var(--low)'}">${type}</span></td>
                             <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
                         </tr>`;
                     }).join('')}
@@ -1076,27 +1210,19 @@
             </div>`;
     }
 
-    function renderKhoaCurrentChart(items) {
-        const ctx = document.getElementById('khoaCurrentChart').getContext('2d');
-        if (khoaCurrentChart) khoaCurrentChart.destroy();
-        if (!items || items.length === 0) { khoaCurrentChart = null; return; }
+    function renderPortCurrentChart(items) {
+        const ctx = document.getElementById('portCurrentChart').getContext('2d');
+        if (portCurrentChart) portCurrentChart.destroy();
+        if (!items || items.length === 0) { portCurrentChart = null; return; }
 
-        // 샘플링
-        const step = items.length > 100 ? Math.floor(items.length / 100) : 1;
-        const filtered = items.filter((_, idx) => idx % step === 0);
-
-        const labels = filtered.map(i => i.obs_date ? i.obs_date.substring(11, 16) : '-');
-        const speeds = filtered.map(i => parseFloat(i.current_speed) || 0);
-        const types = filtered.map(i => i.type);
+        const labels = items.map(i => i.predcDt ? i.predcDt.substring(11, 16) : '-');
+        const speeds = items.map(i => parseFloat(i.crsp) || 0);
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
         gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
         gradient.addColorStop(1, 'rgba(0,229,255,0.02)');
 
-        // 창조/낙조 구분 색상
-        const bgColors = types.map(t => t === '1' ? 'rgba(255,107,107,0.7)' : 'rgba(78,205,196,0.7)');
-
-        khoaCurrentChart = new Chart(ctx, {
+        portCurrentChart = new Chart(ctx, {
             type: 'line',
             data: {
                 labels,
@@ -1105,7 +1231,6 @@
                     borderColor: '#00e5ff', backgroundColor: gradient,
                     borderWidth: 2, fill: true, tension: 0.4,
                     pointRadius: 0, pointHoverRadius: 5,
-                    pointBackgroundColor: bgColors,
                 }]
             },
             options: {
@@ -1116,12 +1241,7 @@
                     tooltip: {
                         backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
                         bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
-                        callbacks: {
-                            label: c => {
-                                const type = types[c.dataIndex] === '1' ? '창조' : types[c.dataIndex] === '2' ? '낙조' : '';
-                                return `유속: ${c.parsed.y.toFixed(1)} cm/s ${type}`;
-                            }
-                        }
+                        callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} cm/s` }
                     }
                 },
                 scales: {
