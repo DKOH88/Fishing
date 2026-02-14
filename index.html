@@ -95,6 +95,9 @@
         .search-result-item .tag.region { background: rgba(255,167,38,0.15); color: var(--warn); }
         .search-no-result { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85em; }
         .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.72em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 8px; vertical-align: middle; }
+        .mulddae-card { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .mulddae-badge { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 20px; font-size: 1.3em; font-weight: 700; }
+        .mulddae-detail { font-size: 0.85em; color: var(--muted); line-height: 1.6; }
 
         @media (max-width: 600px) {
             .controls { flex-direction: column; }
@@ -153,6 +156,10 @@
 
         <!-- Tide Tab -->
         <div class="tab-content active" id="tab-tide">
+            <div class="card" id="mulddaeCard" style="display:none;">
+                <div class="card-title">🌙 오늘의 물때</div>
+                <div id="mulddaeInfo" class="mulddae-card"></div>
+            </div>
             <div class="card" id="tideSummaryCard">
                 <div class="card-title">📊 고저조 요약</div>
                 <div id="tideSummary"><div style="text-align:center;color:var(--muted);padding:20px;">관측소와 날짜를 선택 후 조회하세요</div></div>
@@ -612,6 +619,113 @@
     function getStation() { return document.getElementById('stationSelect').value; }
     function getCurrentStation() { return document.getElementById('currentSelect').value; }
 
+    // ==================== 음력 변환 & 물때 계산 ====================
+    // 한국천문연구원 음력 변환 (간이 알고리즘)
+    function solarToLunar(year, month, day) {
+        // 음력 데이터 테이블 (2024~2028년)
+        // 각 연도별 [윤달여부포함 월별 일수 비트맵, 윤달월, 1월1일의 양력 날짜]
+        const lunarData = {
+            2024: { months: [30,29,30,29,30,30,29,30,29,30,29,30], leap: 0, startSolar: [2024,2,10] },
+            2025: { months: [29,30,29,30,29,30,30,29,30,29,30,29], leap: 6, leapDays: 29, startSolar: [2025,1,29] },
+            2026: { months: [30,29,30,29,30,29,30,30,29,30,29,30], leap: 0, startSolar: [2026,2,17] },
+            2027: { months: [29,30,29,30,29,30,29,30,30,29,30,29], leap: 0, startSolar: [2027,2,7] },
+            2028: { months: [30,29,30,29,30,29,30,29,30,30,29,30], leap: 0, startSolar: [2028,1,27] },
+        };
+
+        const data = lunarData[year] || lunarData[2026];
+        if (!data) return { lunarMonth: 1, lunarDay: 1 };
+
+        const solarDate = new Date(year, month - 1, day);
+        const startDate = new Date(data.startSolar[0], data.startSolar[1] - 1, data.startSolar[2]);
+        let daysDiff = Math.floor((solarDate - startDate) / (1000 * 60 * 60 * 24));
+
+        if (daysDiff < 0) {
+            // 이전 연도 음력 계산 필요 → 대략 이전 연도 12월로 추정
+            const prevData = lunarData[year - 1];
+            if (prevData) {
+                const prevStart = new Date(prevData.startSolar[0], prevData.startSolar[1] - 1, prevData.startSolar[2]);
+                daysDiff = Math.floor((solarDate - prevStart) / (1000 * 60 * 60 * 24));
+                if (daysDiff < 0) return { lunarMonth: 12, lunarDay: 30 + daysDiff };
+                let m = 0;
+                const months = [...prevData.months];
+                if (prevData.leap > 0) months.splice(prevData.leap, 0, prevData.leapDays || 29);
+                for (m = 0; m < months.length; m++) {
+                    if (daysDiff < months[m]) break;
+                    daysDiff -= months[m];
+                }
+                let lunarMonth = m + 1;
+                if (prevData.leap > 0 && m >= prevData.leap) lunarMonth = m >= prevData.leap ? m : m + 1;
+                return { lunarMonth: Math.min(lunarMonth, 12), lunarDay: daysDiff + 1 };
+            }
+            return { lunarMonth: 12, lunarDay: 15 };
+        }
+
+        // 윤달 포함 월 배열 구성
+        const months = [...data.months];
+        if (data.leap > 0) months.splice(data.leap, 0, data.leapDays || 29);
+
+        let m = 0;
+        for (m = 0; m < months.length; m++) {
+            if (daysDiff < months[m]) break;
+            daysDiff -= months[m];
+        }
+
+        let lunarMonth = m + 1;
+        if (data.leap > 0 && m > data.leap) lunarMonth = m;
+        else if (data.leap > 0 && m === data.leap) lunarMonth = data.leap; // 윤달
+
+        lunarMonth = Math.max(1, Math.min(12, lunarMonth));
+
+        return { lunarMonth, lunarDay: daysDiff + 1 };
+    }
+
+    function getMulddae(lunarDay) {
+        // 음력 날짜 기준 물때 (1~30일)
+        // 음력 1일/16일 = 사리(대조기), 8일/23일 = 조금(소조기)
+        const mulddaeMap = {
+            1: { name: '사리', num: '8물', color: '#ff6b6b', emoji: '🔴' },
+            2: { name: '사리', num: '9물', color: '#ff6b6b', emoji: '🔴' },
+            3: { name: '무시', num: '10물', color: '#ffa726', emoji: '🟠' },
+            4: { name: '무시', num: '11물', color: '#ffa726', emoji: '🟠' },
+            5: { name: '무시', num: '12물', color: '#ffa726', emoji: '🟠' },
+            6: { name: '무시', num: '13물', color: '#ffa726', emoji: '🟠' },
+            7: { name: '조금', num: '14물', color: '#4ecdc4', emoji: '🟢' },
+            8: { name: '조금', num: '15물(조금)', color: '#4ecdc4', emoji: '🟢' },
+            9: { name: '들물', num: '1물', color: '#4fc3f7', emoji: '🔵' },
+            10: { name: '들물', num: '2물', color: '#4fc3f7', emoji: '🔵' },
+            11: { name: '들물', num: '3물', color: '#4fc3f7', emoji: '🔵' },
+            12: { name: '들물', num: '4물', color: '#4fc3f7', emoji: '🔵' },
+            13: { name: '들물', num: '5물', color: '#4fc3f7', emoji: '🔵' },
+            14: { name: '사리', num: '6물', color: '#ff6b6b', emoji: '🔴' },
+            15: { name: '사리', num: '7물(사리)', color: '#ff6b6b', emoji: '🔴' },
+            16: { name: '사리', num: '8물', color: '#ff6b6b', emoji: '🔴' },
+            17: { name: '사리', num: '9물', color: '#ff6b6b', emoji: '🔴' },
+            18: { name: '무시', num: '10물', color: '#ffa726', emoji: '🟠' },
+            19: { name: '무시', num: '11물', color: '#ffa726', emoji: '🟠' },
+            20: { name: '무시', num: '12물', color: '#ffa726', emoji: '🟠' },
+            21: { name: '무시', num: '13물', color: '#ffa726', emoji: '🟠' },
+            22: { name: '조금', num: '14물', color: '#4ecdc4', emoji: '🟢' },
+            23: { name: '조금', num: '15물(조금)', color: '#4ecdc4', emoji: '🟢' },
+            24: { name: '들물', num: '1물', color: '#4fc3f7', emoji: '🔵' },
+            25: { name: '들물', num: '2물', color: '#4fc3f7', emoji: '🔵' },
+            26: { name: '들물', num: '3물', color: '#4fc3f7', emoji: '🔵' },
+            27: { name: '들물', num: '4물', color: '#4fc3f7', emoji: '🔵' },
+            28: { name: '들물', num: '5물', color: '#4fc3f7', emoji: '🔵' },
+            29: { name: '사리', num: '6물', color: '#ff6b6b', emoji: '🔴' },
+            30: { name: '사리', num: '7물(사리)', color: '#ff6b6b', emoji: '🔴' },
+        };
+        return mulddaeMap[lunarDay] || mulddaeMap[1];
+    }
+
+    function getMulddaeInfo(dateStr) {
+        const y = parseInt(dateStr.substring(0, 4));
+        const m = parseInt(dateStr.substring(4, 6));
+        const d = parseInt(dateStr.substring(6, 8));
+        const lunar = solarToLunar(y, m, d);
+        const mulddae = getMulddae(lunar.lunarDay);
+        return { ...mulddae, lunarMonth: lunar.lunarMonth, lunarDay: lunar.lunarDay };
+    }
+
     // ==================== GENERIC API CALL (Worker 프록시 경유) ====================
     const PROXY_ENDPOINT_MAP = {
         'tideFcstHghLw/GetTideFcstHghLwApiService': '/api/tide-hilo',
@@ -681,6 +795,20 @@
 
             const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
             const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
+
+            // 물때 정보 표시
+            const mulddae = getMulddaeInfo(dateStr);
+            const mulddaeEl = document.getElementById('mulddaeInfo');
+            const mulddaeCard = document.getElementById('mulddaeCard');
+            mulddaeCard.style.display = '';
+            mulddaeEl.innerHTML = `
+                <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
+                    ${mulddae.emoji} ${mulddae.num}
+                </div>
+                <div class="mulddae-detail">
+                    <div><strong style="color:var(--text)">${mulddae.name}</strong> · 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일</div>
+                    <div>${mulddae.name === '사리' ? '대조기 — 조차가 크고 물살이 셉니다' : mulddae.name === '조금' ? '소조기 — 조차가 작고 물살이 약합니다' : mulddae.name === '무시' ? '사리→조금 전환기 — 조차가 줄어듭니다' : '조금→사리 전환기 — 조차가 커집니다'}</div>
+                </div>`;
 
             summaryEl.innerHTML = `
                 <div class="tide-summary">
