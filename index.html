@@ -34,6 +34,8 @@
         .control-group { flex: 1; min-width: 140px; }
         .control-group label { display: block; font-size: 0.78em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
         select, input[type="date"] { width: 100%; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; outline: none; cursor: pointer; }
+        input[type="date"] { position: relative; }
+        input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
         select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
         .btn { padding: 10px 24px; background: linear-gradient(135deg, #1a73e8, #4fc3f7); border: none; border-radius: 8px; color: #fff; font-size: 0.95em; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
         .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79,195,247,0.3); }
