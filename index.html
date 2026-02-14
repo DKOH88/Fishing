@@ -94,6 +94,13 @@
         .search-no-result { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85em; }
         .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.72em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 8px; vertical-align: middle; }
 
+        /* 좌표 조류 컨트롤 */
+        .coord-controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
+        .coord-controls .control-group { flex: 1; min-width: 120px; }
+        .coord-controls input[type="number"] { width: 100%; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; outline: none; }
+        .coord-controls input[type="number"]:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
+        .port-badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.72em; background: rgba(0,229,255,0.12); color: var(--accent); margin-left: 6px; }
+
         @media (max-width: 600px) {
             .controls { flex-direction: column; }
             .control-group { min-width: 100%; }
@@ -140,6 +147,7 @@
         <div class="tabs">
             <button class="tab-btn active" data-tab="tide">물때/조위</button>
             <button class="tab-btn" data-tab="current">조류</button>
+            <button class="tab-btn" data-tab="coord-current">📍 좌표 조류</button>
         </div>
 
         <!-- Tide Tab -->
@@ -170,8 +178,46 @@
             </div>
         </div>
 
+        <!-- Coordinate Current Tab -->
+        <div class="tab-content" id="tab-coord-current">
+            <div class="card">
+                <div class="card-title">📍 좌표 기반 조류 조회</div>
+                <div class="coord-controls">
+                    <div class="control-group" style="flex:2; min-width:160px;">
+                        <label>낚시 포인트 <span class="port-badge" id="portRegion">프리셋</span></label>
+                        <select id="fishingPortSelect" onchange="onFishingPortChange()">
+                            <option value="">직접 입력</option>
+                        </select>
+                    </div>
+                    <div class="control-group">
+                        <label>위도 (lat)</label>
+                        <input type="number" id="coordLat" step="0.01" min="32" max="39" placeholder="36.38" />
+                    </div>
+                    <div class="control-group">
+                        <label>경도 (lon)</label>
+                        <input type="number" id="coordLon" step="0.01" min="124" max="132" placeholder="126.47" />
+                    </div>
+                    <div class="control-group" style="flex:0;">
+                        <label>&nbsp;</label>
+                        <button class="btn" id="coordSearchBtn" onclick="fetchKhoaCurrentPoint()">조회</button>
+                    </div>
+                </div>
+                <div style="font-size:0.78em;color:var(--muted);margin-top:-8px;margin-bottom:12px;">
+                    ※ 관측소가 없는 지역(오천항, 삼길포항 등)의 조류를 좌표로 직접 조회합니다. (KHOA 수치조류도)
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-title">🌀 좌표 조류 정보 (유향/유속)</div>
+                <div id="khoaCurrentInfo"><div style="text-align:center;color:var(--muted);padding:20px;">낚시 포인트를 선택하거나 좌표를 입력 후 조회하세요</div></div>
+            </div>
+            <div class="card">
+                <div class="card-title">📈 좌표 조류 유속 그래프</div>
+                <div class="chart-container"><canvas id="khoaCurrentChart"></canvas></div>
+            </div>
+        </div>
+
         <footer>
-            데이터 출처: 국립해양조사원 (공공데이터포털)<br>
+            데이터 출처: 국립해양조사원 (공공데이터포털 / KHOA 해양정보)<br>
             ※ 예측 데이터이며, 실제 값과 차이가 있을 수 있습니다.
         </footer>
     </div>
@@ -306,6 +352,34 @@
         }
     ];
 
+    // ==================== 낚시 포인트 프리셋 (좌표 기반 조류 조회용) ====================
+    const FISHING_PORTS = [
+        { name: '오천항', lat: 36.38, lon: 126.47, region: '충남' },
+        { name: '삼길포항', lat: 36.33, lon: 126.42, region: '충남' },
+        { name: '대천항', lat: 36.32, lon: 126.51, region: '충남' },
+        { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남' },
+        { name: '무창포', lat: 36.27, lon: 126.54, region: '충남' },
+        { name: '안흥외항', lat: 36.67, lon: 126.13, region: '충남' },
+        { name: '간월도', lat: 36.62, lon: 126.37, region: '충남' },
+        { name: '궁리포구', lat: 36.78, lon: 126.12, region: '충남' },
+        { name: '격포항', lat: 35.62, lon: 126.47, region: '전북' },
+        { name: '부안변산', lat: 35.67, lon: 126.51, region: '전북' },
+        { name: '비응항', lat: 35.97, lon: 126.62, region: '전북' },
+        { name: '선유도', lat: 35.82, lon: 126.42, region: '전북' },
+        { name: '녹동항', lat: 34.48, lon: 127.08, region: '전남' },
+        { name: '마량항', lat: 34.38, lon: 126.38, region: '전남' },
+        { name: '하효항', lat: 33.23, lon: 126.58, region: '제주' },
+        { name: '김녕항', lat: 33.55, lon: 126.77, region: '제주' },
+        { name: '한림항', lat: 33.42, lon: 126.27, region: '제주' },
+        { name: '대포항', lat: 35.16, lon: 129.18, region: '경남' },
+        { name: '구룡포항', lat: 35.98, lon: 129.57, region: '경북' },
+        { name: '축산항', lat: 36.43, lon: 129.45, region: '경북' },
+        { name: '장호항', lat: 37.28, lon: 129.33, region: '강원' },
+        { name: '임원항', lat: 37.25, lon: 129.35, region: '강원' },
+    ];
+
+    let khoaCurrentChart = null;
+
     // ==================== 관측소/조류 연동 ====================
     function getRegionByStationCode(code) {
         for (const r of REGIONS) {
@@ -371,6 +445,10 @@
                 index.push({ type: 'crnt', code, name, region: r, regionLabel: r.label });
             }
         }
+        // 낚시 포인트 프리셋 추가
+        for (const port of FISHING_PORTS) {
+            index.push({ type: 'port', name: port.name, lat: port.lat, lon: port.lon, regionLabel: port.region });
+        }
         return index;
     }
 
@@ -382,7 +460,7 @@
         return searchIndex.filter(item =>
             item.name.toLowerCase().includes(q) ||
             item.regionLabel.toLowerCase().includes(q) ||
-            item.code.toLowerCase().includes(q)
+            (item.code && item.code.toLowerCase().includes(q))
         ).slice(0, 15);
     }
 
@@ -399,15 +477,18 @@
             el.classList.add('show');
             return;
         }
-        el.innerHTML = results.map((item, i) => `
+        el.innerHTML = results.map((item, i) => {
+            const typeLabel = item.type === 'obs' ? '관측소' : item.type === 'crnt' ? '조류예보점' : '📍 낚시포인트';
+            const typeClass = item.type === 'port' ? 'crnt' : item.type;
+            return `
             <div class="search-result-item" data-idx="${i}">
                 <div class="name">${highlightMatch(item.name, query)}</div>
                 <div class="tags">
-                    <span class="tag ${item.type}">${item.type === 'obs' ? '관측소' : '조류예보점'}</span>
+                    <span class="tag ${typeClass}">${typeLabel}</span>
                     <span class="tag region">${item.regionLabel}</span>
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
         el.classList.add('show');
 
         el.querySelectorAll('.search-result-item').forEach(div => {
@@ -421,6 +502,29 @@
     function selectSearchResult(item) {
         const stationSel = document.getElementById('stationSelect');
         const currentSel = document.getElementById('currentSelect');
+
+        if (item.type === 'port') {
+            // 낚시 포인트 → 좌표 조류 탭으로 전환
+            document.getElementById('coordLat').value = item.lat;
+            document.getElementById('coordLon').value = item.lon;
+            // 프리셋 드롭다운에서도 선택
+            const portSel = document.getElementById('fishingPortSelect');
+            for (let i = 0; i < portSel.options.length; i++) {
+                if (portSel.options[i].textContent.includes(item.name)) {
+                    portSel.selectedIndex = i; break;
+                }
+            }
+            document.getElementById('portRegion').textContent = item.regionLabel;
+            // 탭 전환
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.querySelector('[data-tab="coord-current"]').classList.add('active');
+            document.getElementById('tab-coord-current').classList.add('active');
+            // 검색창 닫기
+            document.getElementById('searchInput').value = item.name;
+            document.getElementById('searchResults').classList.remove('show');
+            return;
+        }
 
         // 해당 지역의 관측소를 첫 번째로 선택
         const region = item.region;
@@ -453,6 +557,9 @@
         // 관측소/조류 연동 초기화
         buildStationSelect();
         onStationChange();
+
+        // 낚시 포인트 프리셋 초기화
+        buildFishingPortSelect();
         document.getElementById('stationSelect').addEventListener('change', onStationChange);
 
         // 탭 전환
@@ -827,6 +934,194 @@
                         backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
                         bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
                         callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} cm/s` }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm/s' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                }
+            }
+        });
+    }
+    // ==================== 낚시 포인트 프리셋 ====================
+    function buildFishingPortSelect() {
+        const sel = document.getElementById('fishingPortSelect');
+        // 지역별 그룹
+        const regions = {};
+        for (const port of FISHING_PORTS) {
+            if (!regions[port.region]) regions[port.region] = [];
+            regions[port.region].push(port);
+        }
+        for (const [region, ports] of Object.entries(regions)) {
+            const og = document.createElement('optgroup');
+            og.label = region;
+            for (const port of ports) {
+                const opt = document.createElement('option');
+                opt.value = `${port.lat},${port.lon}`;
+                opt.textContent = `${port.name} (${port.lat}, ${port.lon})`;
+                opt.dataset.region = port.region;
+                og.appendChild(opt);
+            }
+            sel.appendChild(og);
+        }
+    }
+
+    function onFishingPortChange() {
+        const sel = document.getElementById('fishingPortSelect');
+        const val = sel.value;
+        if (!val) {
+            document.getElementById('coordLat').value = '';
+            document.getElementById('coordLon').value = '';
+            document.getElementById('portRegion').textContent = '프리셋';
+            return;
+        }
+        const [lat, lon] = val.split(',');
+        document.getElementById('coordLat').value = lat;
+        document.getElementById('coordLon').value = lon;
+        const opt = sel.options[sel.selectedIndex];
+        document.getElementById('portRegion').textContent = opt.dataset.region || '프리셋';
+    }
+
+    // ==================== KHOA API 호출 (직접 호출 - 공개 키 사용) ====================
+    const KHOA_API_BASE = 'https://www.khoa.go.kr/api/oceangrid';
+    const KHOA_SERVICE_KEY = 'wldhxng34hkddbsgm81lwldhxng34hkddbsgm81l==';
+
+    async function khoaApiCall(apiPath, params) {
+        const url = new URL(`${KHOA_API_BASE}/${apiPath}/search.do`);
+        url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
+        url.searchParams.set('ResultType', 'json');
+        Object.entries(params).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
+        });
+        const resp = await fetch(url.toString());
+        if (!resp.ok) throw new Error(`KHOA HTTP ${resp.status}`);
+        const json = await resp.json();
+        if (!json.result || !json.result.data) throw new Error('KHOA API에서 데이터가 없습니다');
+        return json.result.data;
+    }
+
+    // ==================== 좌표 조류 조회 (tidalCurrentPoint) ====================
+    async function fetchKhoaCurrentPoint() {
+        const lat = document.getElementById('coordLat').value;
+        const lon = document.getElementById('coordLon').value;
+        const date = getDateStr();
+        const infoEl = document.getElementById('khoaCurrentInfo');
+        const btn = document.getElementById('coordSearchBtn');
+
+        if (!lat || !lon) {
+            showToast('위도/경도를 입력하세요', true);
+            return;
+        }
+
+        btn.disabled = true; btn.textContent = '조회 중...';
+        infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>좌표 조류 데이터 로딩...</div></div>';
+
+        try {
+            const data = await khoaApiCall('tidalCurrentPoint', {
+                Sdate: date, SHour: '00', SMinute: '00',
+                Edate: date, EHour: '23', EMinute: '59',
+                lon, lat
+            });
+
+            if (!data || data.length === 0) {
+                infoEl.innerHTML = '<div class="error-msg">해당 좌표에 조류 데이터가 없습니다. 좌표를 확인해주세요.</div>';
+                renderKhoaCurrentChart([]);
+                return;
+            }
+
+            renderKhoaCurrentTable(data, infoEl, lat, lon);
+            renderKhoaCurrentChart(data);
+        } catch(e) {
+            infoEl.innerHTML = `<div class="error-msg">좌표 조류 오류: ${e.message}</div>`;
+            renderKhoaCurrentChart([]);
+        } finally {
+            btn.disabled = false; btn.textContent = '조회';
+        }
+    }
+
+    function renderKhoaCurrentTable(items, el, lat, lon) {
+        const maxSpeed = Math.max(...items.map(i => parseFloat(i.current_speed) || 0), 1);
+
+        // 10분 간격 샘플링 (데이터가 많을 수 있음)
+        const step = items.length > 50 ? Math.floor(items.length / 50) : 1;
+        const filtered = items.filter((_, idx) => idx % step === 0);
+
+        el.innerHTML = `
+            <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
+                좌표: <strong style="color:var(--text)">${lat}, ${lon}</strong> ·
+                총 ${items.length}건 (${filtered.length}건 표시)
+            </div>
+            <div style="max-height:400px;overflow-y:auto;">
+            <table class="current-table">
+                <thead><tr><th>시간</th><th>유향 (°)</th><th>유속 (cm/s)</th><th>창/낙</th><th>세기</th></tr></thead>
+                <tbody>
+                    ${filtered.map(item => {
+                        // obs_date format: "2016-08-10 02:30:00"
+                        const time = item.obs_date ? item.obs_date.substring(11, 16) : '-';
+                        const speed = parseFloat(item.current_speed) || 0;
+                        const dir = item.current_dir || '-';
+                        const type = item.type === '1' ? '창조' : item.type === '2' ? '낙조' : item.type || '-';
+                        const pct = (speed / maxSpeed) * 100;
+                        const color = getSpeedColor(speed);
+                        return `<tr>
+                            <td>${time}</td>
+                            <td style="color:${color};">${dir}°</td>
+                            <td>${speed.toFixed(1)}</td>
+                            <td><span style="color:${item.type === '1' ? 'var(--high)' : 'var(--low)'}">${type}</span></td>
+                            <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>`;
+    }
+
+    function renderKhoaCurrentChart(items) {
+        const ctx = document.getElementById('khoaCurrentChart').getContext('2d');
+        if (khoaCurrentChart) khoaCurrentChart.destroy();
+        if (!items || items.length === 0) { khoaCurrentChart = null; return; }
+
+        // 샘플링
+        const step = items.length > 100 ? Math.floor(items.length / 100) : 1;
+        const filtered = items.filter((_, idx) => idx % step === 0);
+
+        const labels = filtered.map(i => i.obs_date ? i.obs_date.substring(11, 16) : '-');
+        const speeds = filtered.map(i => parseFloat(i.current_speed) || 0);
+        const types = filtered.map(i => i.type);
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+        gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
+        gradient.addColorStop(1, 'rgba(0,229,255,0.02)');
+
+        // 창조/낙조 구분 색상
+        const bgColors = types.map(t => t === '1' ? 'rgba(255,107,107,0.7)' : 'rgba(78,205,196,0.7)');
+
+        khoaCurrentChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: '유속 (cm/s)', data: speeds,
+                    borderColor: '#00e5ff', backgroundColor: gradient,
+                    borderWidth: 2, fill: true, tension: 0.4,
+                    pointRadius: 0, pointHoverRadius: 5,
+                    pointBackgroundColor: bgColors,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
+                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
+                        callbacks: {
+                            label: c => {
+                                const type = types[c.dataIndex] === '1' ? '창조' : types[c.dataIndex] === '2' ? '낙조' : '';
+                                return `유속: ${c.parsed.y.toFixed(1)} cm/s ${type}`;
+                            }
+                        }
                     }
                 },
                 scales: {

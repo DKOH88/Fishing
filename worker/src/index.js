@@ -1,8 +1,12 @@
 // ==================== Tide API Proxy (Cloudflare Worker) ====================
-// 공공데이터포털 API를 캐싱하여 프록시하는 Cloudflare Worker
+// 공공데이터포털 + KHOA 좌표 기반 API를 캐싱하여 프록시하는 Cloudflare Worker
 // API 키를 서버에 숨기고, 동일 요청을 Cache API로 캐싱
 
 const UPSTREAM_BASE = 'http://apis.data.go.kr/1192136';
+
+// ==================== KHOA 좌표 기반 API ====================
+const KHOA_BASE = 'https://www.khoa.go.kr/api/oceangrid';
+const KHOA_SERVICE_KEY = 'wldhxng34hkddbsgm81lwldhxng34hkddbsgm81l==';
 
 const ENDPOINT_MAP = {
   'tide-hilo':  'tideFcstHghLw/GetTideFcstHghLwApiService',
@@ -112,6 +116,198 @@ function buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey) {
   return url.toString();
 }
 
+// ==================== KHOA Helpers ====================
+
+function validateKhoaCurrentPointParams(lat, lon, date) {
+  if (!lat || isNaN(lat) || lat < 32 || lat > 39) {
+    return 'Invalid lat (expected 32~39)';
+  }
+  if (!lon || isNaN(lon) || lon < 124 || lon > 132) {
+    return 'Invalid lon (expected 124~132)';
+  }
+  if (!date || !/^\d{8}$/.test(date)) {
+    return 'Invalid date (expected YYYYMMDD)';
+  }
+  return null;
+}
+
+function validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, maxY) {
+  if (!date || !/^\d{8}$/.test(date)) {
+    return 'Invalid date (expected YYYYMMDD)';
+  }
+  const h = parseInt(hour);
+  const m = parseInt(minute);
+  if (isNaN(h) || h < 0 || h > 23) return 'Invalid hour (0~23)';
+  if (isNaN(m) || m < 0 || m > 59) return 'Invalid minute (0~59)';
+  for (const [name, val] of [['minX', minX], ['maxX', maxX], ['minY', minY], ['maxY', maxY]]) {
+    if (!val || isNaN(parseFloat(val))) return `Invalid ${name}`;
+  }
+  return null;
+}
+
+function buildKhoaCacheKey(endpoint, paramsStr) {
+  return new Request(`https://tide-cache.internal/khoa/${endpoint}/${paramsStr}`);
+}
+
+function buildKhoaCurrentPointUrl(lat, lon, date) {
+  const url = new URL(`${KHOA_BASE}/tidalCurrentPoint/search.do`);
+  url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
+  url.searchParams.set('Sdate', date);
+  url.searchParams.set('SHour', '00');
+  url.searchParams.set('SMinute', '00');
+  url.searchParams.set('Edate', date);
+  url.searchParams.set('EHour', '23');
+  url.searchParams.set('EMinute', '59');
+  url.searchParams.set('lon', lon);
+  url.searchParams.set('lat', lat);
+  url.searchParams.set('ResultType', 'json');
+  return url.toString();
+}
+
+function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY) {
+  const url = new URL(`${KHOA_BASE}/tidalCurrentArea/search.do`);
+  url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
+  url.searchParams.set('Date', date);
+  url.searchParams.set('Hour', hour);
+  url.searchParams.set('Minute', minute);
+  url.searchParams.set('MinX', minX);
+  url.searchParams.set('MaxX', maxX);
+  url.searchParams.set('MinY', minY);
+  url.searchParams.set('MaxY', maxY);
+  url.searchParams.set('ResultType', 'json');
+  return url.toString();
+}
+
+// ==================== KHOA Request Handler ====================
+
+async function handleKhoaRequest(khoaEndpoint, url, ctx) {
+  if (khoaEndpoint === 'current-point') {
+    const lat = url.searchParams.get('lat');
+    const lon = url.searchParams.get('lon');
+    const date = url.searchParams.get('date');
+
+    const err = validateKhoaCurrentPointParams(parseFloat(lat), parseFloat(lon), date);
+    if (err) return jsonResponse({ error: err }, 400);
+
+    // 캐시 확인
+    const cacheParamsStr = `${lat}_${lon}_${date}`;
+    const cacheKey = buildKhoaCacheKey('current-point', cacheParamsStr);
+    const cache = caches.default;
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const resp = addCorsHeaders(cached);
+      resp.headers.set('X-Cache', 'HIT');
+      return resp;
+    }
+
+    // KHOA API 호출
+    const upstreamUrl = buildKhoaCurrentPointUrl(lat, lon, date);
+    let upstreamResp;
+    try {
+      upstreamResp = await fetch(upstreamUrl);
+    } catch (e) {
+      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502);
+    }
+
+    if (!upstreamResp.ok) {
+      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502);
+    }
+
+    let data;
+    try {
+      data = await upstreamResp.json();
+    } catch (e) {
+      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502);
+    }
+
+    // KHOA 에러 체크: result.meta 없거나 data 없으면 에러
+    if (!data.result || !data.result.data) {
+      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400);
+    }
+
+    // 캐싱
+    const ttl = computeCacheTTL('khoa-current-point', date);
+    const response = new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, max-age=${ttl}`,
+        'X-Cache': 'MISS',
+        'X-Cache-TTL': `${ttl}s`,
+        ...CORS_HEADERS,
+      },
+    });
+
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    return response;
+
+  } else if (khoaEndpoint === 'current-area') {
+    const date = url.searchParams.get('date');
+    const hour = url.searchParams.get('hour');
+    const minute = url.searchParams.get('minute');
+    const minX = url.searchParams.get('minX');
+    const maxX = url.searchParams.get('maxX');
+    const minY = url.searchParams.get('minY');
+    const maxY = url.searchParams.get('maxY');
+
+    const err = validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, maxY);
+    if (err) return jsonResponse({ error: err }, 400);
+
+    // 캐시 확인
+    const cacheParamsStr = `${date}_${hour}_${minute}_${minX}_${maxX}_${minY}_${maxY}`;
+    const cacheKey = buildKhoaCacheKey('current-area', cacheParamsStr);
+    const cache = caches.default;
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      const resp = addCorsHeaders(cached);
+      resp.headers.set('X-Cache', 'HIT');
+      return resp;
+    }
+
+    // KHOA API 호출
+    const upstreamUrl = buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY);
+    let upstreamResp;
+    try {
+      upstreamResp = await fetch(upstreamUrl);
+    } catch (e) {
+      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502);
+    }
+
+    if (!upstreamResp.ok) {
+      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502);
+    }
+
+    let data;
+    try {
+      data = await upstreamResp.json();
+    } catch (e) {
+      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502);
+    }
+
+    if (!data.result || !data.result.data) {
+      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400);
+    }
+
+    // 캐싱 (영역 조류는 특정 시각 데이터 → 같은 TTL)
+    const ttl = computeCacheTTL('khoa-current-area', date);
+    const response = new Response(JSON.stringify(data), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, max-age=${ttl}`,
+        'X-Cache': 'MISS',
+        'X-Cache-TTL': `${ttl}s`,
+        ...CORS_HEADERS,
+      },
+    });
+
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+    return response;
+  }
+
+  return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404);
+}
+
 // ==================== Main Handler ====================
 
 export default {
@@ -123,14 +319,26 @@ export default {
       return handleOptions();
     }
 
-    // 라우팅: GET /api/{endpoint}
-    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current)$/);
-    if (!match) {
-      return jsonResponse({ error: 'Not Found', endpoints: ['/api/tide-hilo', '/api/tide-level', '/api/current'] }, 404);
-    }
-
     if (request.method !== 'GET') {
       return jsonResponse({ error: 'Method not allowed' }, 405);
+    }
+
+    // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
+    const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
+    if (khoaMatch) {
+      return handleKhoaRequest(khoaMatch[1], url, ctx);
+    }
+
+    // 기존 공공데이터포털 API 라우팅: GET /api/{endpoint}
+    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current)$/);
+    if (!match) {
+      return jsonResponse({
+        error: 'Not Found',
+        endpoints: [
+          '/api/tide-hilo', '/api/tide-level', '/api/current',
+          '/api/khoa/current-point', '/api/khoa/current-area'
+        ]
+      }, 404);
     }
 
     const endpoint = match[1];
