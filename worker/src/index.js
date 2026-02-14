@@ -308,6 +308,94 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
   return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404);
 }
 
+// ==================== 음양력 변환 (KASI 공공데이터포털) ====================
+
+const LUNAR_API_BASE = 'http://apis.data.go.kr/B090041/openapi/service/LrsrCldInfoService/getLunCalInfo';
+
+async function handleLunarRequest(url, env, ctx) {
+  const solYear = url.searchParams.get('solYear');
+  const solMonth = url.searchParams.get('solMonth');
+  const solDay = url.searchParams.get('solDay');
+
+  // 입력 검증
+  if (!solYear || !/^\d{4}$/.test(solYear)) return jsonResponse({ error: 'Invalid solYear' }, 400);
+  if (!solMonth || !/^\d{2}$/.test(solMonth)) return jsonResponse({ error: 'Invalid solMonth' }, 400);
+  if (!solDay || !/^\d{2}$/.test(solDay)) return jsonResponse({ error: 'Invalid solDay' }, 400);
+
+  // 캐시 확인 (음력 데이터는 불변 → 30일 캐시)
+  const cacheKey = new Request(`https://tide-cache.internal/lunar/${solYear}${solMonth}${solDay}`);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const resp = addCorsHeaders(cached);
+    resp.headers.set('X-Cache', 'HIT');
+    return resp;
+  }
+
+  const apiKey = env.DATA_GO_KR_API_KEY;
+  if (!apiKey) {
+    return jsonResponse({ error: 'Server configuration error: API key not set' }, 500);
+  }
+
+  const upstreamUrl = new URL(LUNAR_API_BASE);
+  upstreamUrl.searchParams.set('serviceKey', apiKey);
+  upstreamUrl.searchParams.set('solYear', solYear);
+  upstreamUrl.searchParams.set('solMonth', solMonth);
+  upstreamUrl.searchParams.set('solDay', solDay);
+  upstreamUrl.searchParams.set('_type', 'json');
+
+  let upstreamResp;
+  try {
+    upstreamResp = await fetch(upstreamUrl.toString());
+  } catch (e) {
+    return jsonResponse({ error: 'Lunar API fetch failed', detail: e.message }, 502);
+  }
+
+  if (!upstreamResp.ok) {
+    return jsonResponse({ error: `Lunar API returned HTTP ${upstreamResp.status}` }, 502);
+  }
+
+  let data;
+  try {
+    data = await upstreamResp.json();
+  } catch (e) {
+    return jsonResponse({ error: 'Failed to parse lunar API response' }, 502);
+  }
+
+  // 응답에서 음력 데이터 추출
+  const item = data?.response?.body?.items?.item;
+  if (!item) {
+    return jsonResponse({ error: 'No lunar data found', raw: data }, 400);
+  }
+
+  // 간결한 응답으로 가공
+  const result = {
+    solYear: item.solYear,
+    solMonth: item.solMonth,
+    solDay: item.solDay,
+    lunYear: item.lunYear,
+    lunMonth: item.lunMonth,
+    lunDay: item.lunDay,
+    lunLeapmonth: item.lunLeapmonth, // 평(평달)/윤(윤달)
+    solWeek: item.solWeek,
+  };
+
+  const ttl = 30 * 24 * 60 * 60; // 30일 (음력 데이터 불변)
+  const response = new Response(JSON.stringify(result), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${ttl}`,
+      'X-Cache': 'MISS',
+      'X-Cache-TTL': `${ttl}s`,
+      ...CORS_HEADERS,
+    },
+  });
+
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
 // ==================== Main Handler ====================
 
 export default {
@@ -323,6 +411,11 @@ export default {
       return jsonResponse({ error: 'Method not allowed' }, 405);
     }
 
+    // 음양력 변환 API: GET /api/lunar?solYear=2026&solMonth=09&solDay=01
+    if (url.pathname === '/api/lunar') {
+      return handleLunarRequest(url, env, ctx);
+    }
+
     // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
     const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
     if (khoaMatch) {
@@ -336,7 +429,8 @@ export default {
         error: 'Not Found',
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
-          '/api/khoa/current-point', '/api/khoa/current-area'
+          '/api/khoa/current-point', '/api/khoa/current-area',
+          '/api/lunar'
         ]
       }, 404);
     }
