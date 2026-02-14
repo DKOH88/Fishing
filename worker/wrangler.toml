@@ -1,0 +1,6 @@
+name = "tide-api-proxy"
+main = "src/index.js"
+compatibility_date = "2025-05-06"
+
+[observability]
+enabled = true

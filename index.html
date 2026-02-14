@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>물때 & 조류 정보</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
+    <style>
+        :root {
+            --bg: #0a1628;
+            --card: #111d35;
+            --border: #1e3a5f;
+            --primary: #4fc3f7;
+            --accent: #00e5ff;
+            --high: #ff6b6b;
+            --low: #4ecdc4;
+            --text: #e0e6ed;
+            --muted: #7a8ba3;
+            --warn: #ffa726;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            font-family: 'Segoe UI', -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        .container { max-width: 960px; margin: 0 auto; padding: 16px; }
+        header { text-align: center; padding: 20px 0 12px; }
+        header h1 { font-size: 1.6em; color: var(--accent); display: flex; align-items: center; justify-content: center; gap: 10px; }
+        header h1 .wave { font-size: 1.3em; }
+        .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
+        .control-group { flex: 1; min-width: 140px; }
+        .control-group label { display: block; font-size: 0.78em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+        select, input[type="date"] { width: 100%; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; outline: none; cursor: pointer; }
+        select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
+        .btn { padding: 10px 24px; background: linear-gradient(135deg, #1a73e8, #4fc3f7); border: none; border-radius: 8px; color: #fff; font-size: 0.95em; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79,195,247,0.3); }
+        .btn:active { transform: translateY(0); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .card-title { font-size: 1em; color: var(--primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .tide-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+        .tide-item { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 14px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
+        .tide-item.high { border-left: 3px solid var(--high); }
+        .tide-item.low { border-left: 3px solid var(--low); }
+        .tide-item.diff { border-left: 3px solid var(--warn); }
+        .tide-item .label { font-size: 0.75em; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .tide-item .value { font-size: 1.8em; font-weight: 700; margin: 4px 0; }
+        .tide-item.high .value { color: var(--high); }
+        .tide-item.low .value { color: var(--low); }
+        .tide-item.diff .value { color: var(--warn); }
+        .tide-item .time { font-size: 0.82em; color: var(--muted); }
+        .chart-container { position: relative; height: 320px; }
+        .current-table { width: 100%; border-collapse: collapse; }
+        .current-table th { text-align: left; padding: 8px 12px; font-size: 0.78em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+        .current-table td { padding: 10px 12px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .speed-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 4px; }
+        .speed-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+        .loading { text-align: center; padding: 40px; color: var(--muted); }
+        .loading .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .error-msg { color: var(--high); text-align: center; padding: 20px; font-size: 0.9em; }
+        .tide-detail-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .tide-tag { padding: 6px 14px; border-radius: 20px; font-size: 0.82em; font-weight: 500; }
+        .tide-tag.high { background: rgba(255,107,107,0.15); color: var(--high); }
+        .tide-tag.low { background: rgba(78,205,196,0.15); color: var(--low); }
+        footer { text-align: center; padding: 20px; color: var(--muted); font-size: 0.75em; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+        .tab-btn { padding: 10px 20px; background: transparent; border: none; color: var(--muted); font-size: 0.9em; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-btn:hover { color: var(--text); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* 검색 바 */
+        .search-bar { position: relative; margin-bottom: 16px; }
+        .search-bar input { width: 100%; padding: 12px 16px 12px 40px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.95em; outline: none; }
+        .search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
+        .search-bar .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1em; color: var(--muted); pointer-events: none; }
+        .search-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; max-height: 320px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-top: 4px; }
+        .search-results.show { display: block; }
+        .search-result-item { padding: 10px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .search-result-item:hover { background: rgba(79,195,247,0.1); }
+        .search-result-item:last-child { border-bottom: none; }
+        .search-result-item .name { color: var(--text); font-size: 0.9em; }
+        .search-result-item .name em { color: var(--accent); font-style: normal; font-weight: 600; }
+        .search-result-item .tags { display: flex; gap: 4px; }
+        .search-result-item .tag { padding: 2px 8px; border-radius: 10px; font-size: 0.7em; font-weight: 500; }
+        .search-result-item .tag.obs { background: rgba(79,195,247,0.15); color: var(--primary); }
+        .search-result-item .tag.crnt { background: rgba(0,229,255,0.15); color: var(--accent); }
+        .search-result-item .tag.region { background: rgba(255,167,38,0.15); color: var(--warn); }
+        .search-no-result { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85em; }
+        .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.72em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 8px; vertical-align: middle; }
+
+        @media (max-width: 600px) {
+            .controls { flex-direction: column; }
+            .control-group { min-width: 100%; }
+            .chart-container { height: 250px; }
+            .tide-summary { grid-template-columns: 1fr 1fr; }
+            header h1 { font-size: 1.3em; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><span class="wave">🌊</span> 물때 & 조류 정보</h1>
+        </header>
+
+        <!-- 검색 -->
+        <div class="search-bar" id="searchBar">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="searchInput" placeholder="지역명 검색 (예: 인천, 부산항, 해운대, 여수해협...)" autocomplete="off" />
+            <div class="search-results" id="searchResults"></div>
+        </div>
+
+        <!-- Controls -->
+        <div class="controls">
+            <div class="control-group">
+                <label>관측소 (조위) <span class="region-badge" id="stationRegion">인천/경기</span></label>
+                <select id="stationSelect"></select>
+            </div>
+            <div class="control-group">
+                <label>조류 예보점 <span class="region-badge" id="currentRegion">인천/경기</span></label>
+                <select id="currentSelect"></select>
+            </div>
+            <div class="control-group">
+                <label>날짜</label>
+                <input type="date" id="dateInput" />
+            </div>
+            <div class="control-group" style="flex:0;">
+                <label>&nbsp;</label>
+                <button class="btn" id="searchBtn" onclick="fetchAll()">조회</button>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="tide">물때/조위</button>
+            <button class="tab-btn" data-tab="current">조류</button>
+        </div>
+
+        <!-- Tide Tab -->
+        <div class="tab-content active" id="tab-tide">
+            <div class="card" id="tideSummaryCard">
+                <div class="card-title">📊 고저조 요약</div>
+                <div id="tideSummary"><div style="text-align:center;color:var(--muted);padding:20px;">관측소와 날짜를 선택 후 조회하세요</div></div>
+            </div>
+            <div class="card" id="tideDetailCard">
+                <div class="card-title">📋 고저조 상세</div>
+                <div id="tideDetail"></div>
+            </div>
+            <div class="card">
+                <div class="card-title">📈 조위 변화 그래프 (10분 단위)</div>
+                <div class="chart-container"><canvas id="tideChart"></canvas></div>
+            </div>
+        </div>
+
+        <!-- Current Tab -->
+        <div class="tab-content" id="tab-current">
+            <div class="card">
+                <div class="card-title">🌀 조류 정보 (유향/유속)</div>
+                <div id="currentInfo"><div style="text-align:center;color:var(--muted);padding:20px;">조류 예보점과 날짜를 선택 후 조회하세요</div></div>
+            </div>
+            <div class="card">
+                <div class="card-title">📈 조류 유속 그래프</div>
+                <div class="chart-container"><canvas id="currentChart"></canvas></div>
+            </div>
+        </div>
+
+        <footer>
+            데이터 출처: 국립해양조사원 (공공데이터포털)<br>
+            ※ 예측 데이터이며, 실제 값과 차이가 있을 수 있습니다.
+        </footer>
+    </div>
+
+    <script>
+    // ==================== CONFIG ====================
+    const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
+    let tideChart = null;
+    let currentChart = null;
+
+    // ==================== 지역 데이터 (관측소 + 조류 예보점 통합) ====================
+    const REGIONS = [
+        {
+            key: 'incheon', label: '인천/경기',
+            stations: [
+                ['DT_0001','인천'],['DT_0052','인천송도'],['DT_0044','영종대교'],['DT_0032','강화대교'],
+                ['DT_0043','영흥도'],['DT_0093','소무의도'],['DT_0065','덕적도'],['DT_0066','향화도'],
+                ['DT_0002','평택'],['DT_0008','안산']
+            ],
+            currents: [
+                ['07GG03','석모수도'],['07GG06','인천갑문'],['07GG11','덕적도'],['09IC01','인천남항'],
+                ['09IC07','경인아라뱃길'],['14IC03','자월도북측'],['14IC04','이작도서측'],['16LTC01','인천대교'],
+                ['16LTC02','인천동수도입구'],['16DJ04','시화방조제'],['17LTC01','인천신항입구'],['17LTC02','경기만북수도'],
+                ['19LTC01','화성방조제'],['20LTC04','영흥도서측'],['20LTC07','자월도북서측'],['20LTC11','덕적군도서측'],
+                ['20LTC12','수우도서측'],['05GH-5','장봉수도'],['15LTC01','염하수도'],['03DS-1','장안서']
+            ]
+        },
+        {
+            key: 'west_mid', label: '충남/전북 (서해중부)',
+            stations: [
+                ['DT_0050','태안'],['DT_0067','안흥'],['DT_0017','대산'],['DT_0025','보령'],
+                ['DT_0051','서천마량'],['DT_0024','장항'],['DT_0018','군산'],['DT_0068','위도'],['DT_0037','어청도']
+            ],
+            currents: [
+                ['03PT-1','아산만입구'],['07DS02','대산항'],['07TA03','태안'],['07TA04','만리포'],
+                ['07TA05','안흥'],['07TA09','격렬비열도'],['07KS01','원산도'],['07KS03','외연열도'],
+                ['12JB11','비인만'],['12JB14','군산항입구'],['13PT01','평택항'],['15LTC08','장고도수도'],
+                ['16LTC03','천수만'],['17LTC04','문갑도동측'],['17LTC06','가로림만입구'],['19LTC02','외연도동측'],
+                ['23GA01','안면도서측'],['24TJ02','가로림만'],['24TJ04','입파도'],['24TJ05','아산만28호등부표']
+            ]
+        },
+        {
+            key: 'west_south', label: '전남서부 (목포/신안)',
+            stations: [
+                ['DT_0007','목포'],['DT_0035','흑산도'],['DT_0094','서거차도']
+            ],
+            currents: [
+                ['01MP-2','목포구'],['06SA01','면도수도'],['06SA10','팔구포북측'],['06SA18','경치동수도'],
+                ['06GS07','고군산군도'],['07JB12','수도수도북측'],['07JB14','수도수도'],['10MP07','시아해'],
+                ['14BP01','병풍도북측'],['15LTC02','어청도서측'],['15LTC03','위도동측'],['16LTC05','목포북항북측'],
+                ['16LTC06','시아해북측'],['17LTC08','녹도북측'],['17LTC09','십이동파도'],['17LTC10','고군산군도북측'],
+                ['17MTC14','위도서측'],['17MTC19','안마도서측'],['17MTC20','안마도동측'],['18LTC01','난지도북측'],
+                ['18LTC02','와도서측'],['18LTC03','안좌도북측'],['18LTC04','비금수도'],['19LTC03','재원동수도'],
+                ['19LTC04','증도동측'],['19LTC05','매화도서측'],['19LTC06','하의수도'],['20LTC01','어불도서측'],
+                ['20LTC02','독거군도북측'],['20LTC03','외모군도남측'],['20LTC05','함평만입구'],['20LTC08','우이수도'],
+                ['20LTC09','송이도북측'],['22LTC12','마량항'],['22EW01','대화사도서측'],['23LTC05','율도북동측'],
+                ['23LTC06','대야도동측'],['23LTC07','우이도남측'],['23LTC08','장산도서측'],['23LTC09','달리도서측'],
+                ['24LTC01','재원도남서측'],['24LTC02','어의도북측'],['24LTC03','안마도남측'],['24LTC04','거륜도남서측'],
+                ['24LTC05','말도남측'],['24LTC06','소횡경도북측'],['24LTC07','십이동파도남동측'],['24LTC08','대화사도남측'],
+                ['24LTC09','삽시도북측'],['24LTC10','외파수도남측'],['24LTC11','가의도북동측']
+            ]
+        },
+        {
+            key: 'south_west', label: '전남동부 (진도/완도/여수)',
+            stations: [
+                ['DT_0028','진도'],['DT_0027','완도'],['DT_0026','고흥발포'],['DT_0092','여호항'],
+                ['DT_0016','여수'],['DT_0049','광양'],['DT_0031','거문도']
+            ],
+            currents: [
+                ['06JD01','외병도'],['06GH01','득량만입구'],['06GH07','거금도남측'],['06YME1','광도동측'],
+                ['06YME4','보길도남서측'],['06YME5','장죽수도'],['06YME6','맹골수도'],['06YME8','매물수도'],
+                ['06YS03','신강수도'],['06YS04','서수도(여자만)'],['06YS09','거금수도'],['08GY-5','묘도수도'],
+                ['11JD02','정등해'],['11JD09','마로해'],['12YS08','광양항'],['13WD01','소안도'],
+                ['14JD03','정등해북측'],['15LTC05','만재도서측'],['15LTC06','거차수도'],['15LTC07','독거군도동측'],
+                ['15LTC09','금당수도'],['15LTC10','여수해만'],['15SE01','노량수도'],['15HD05','하동항'],
+                ['16LTC04','역도'],['16LTC07','장산도동측'],['16LTC08','광양항제1항로'],['16LTC12','낙동포'],
+                ['17LTC11','가사도동측'],['17LTC12','소안수도'],['17LTC13','완도통항분리대'],['18LTC05','흑일도남측'],
+                ['18LTC06','여수해협'],['18LTC07','여수해만입구'],['18MTC10','초도남측'],['19LTC07','청산도동측'],
+                ['19LTC08','대병풍도서측'],['19LTC09','초도동측'],['19LTC10','손죽도북측'],['19LTC11','나로도동측'],
+                ['19LTC12','여수해만남측'],['19LTC13','대병대도동측'],['20LTC06','금오열도남측'],['20LTC13','관리도'],
+                ['20LTC14','가덕도남측'],['20LTC15','거금도동측'],['22LTC01','삼천포-제주항로'],['22LTC02','대방수도'],
+                ['22LTC03','노량수도동측'],['22LTC04','외수도'],['22LTC05','금오수도'],['22LTC06','백야도동측'],
+                ['22LTC07','백야수도'],['22LTC08','외나로도서측'],['22LTC09','손죽도서측'],['22LTC10','소록도동측'],
+                ['22LTC13','청산도서측'],['22LTC14','황제도동측'],['22LTC15','광양항A호등부표'],
+                ['23LTC01','우도북서측'],['23LTC02','제주도서측'],['23LTC03','백일도동측'],['23LTC04','어룡도북측'],
+                ['23YG03','외나로도남측']
+            ]
+        },
+        {
+            key: 'south_east', label: '경남 (통영/거제/부산)',
+            stations: [
+                ['DT_0061','삼천포'],['DT_0014','통영'],['DT_0029','거제도'],['DT_0063','가덕도'],
+                ['DT_0062','마산'],['DT_0056','부산항신항'],['DT_0005','부산']
+            ],
+            currents: [
+                ['01SR-1','사량도북측'],['08GA01','감천항입구'],['10GD03','가덕수도'],['16LTC09','통영해만'],
+                ['16LTC10','비진도남측'],['16LTC13','부산항입구'],['16MTC01','미조수도'],['16MTC16','지심도서측'],
+                ['17LTC14','욕지도북측'],['18LTC08','두미도북측'],['18LTC09','사량도동측'],['18LTC10','가조도수도'],
+                ['18LTC11','진해만(통영항로)'],['18LTC12','거제도동측'],['18LTC13','해운대'],['19LTC14','광안리'],
+                ['21LTC01','태종대남측'],['21LTC02','북형제도남측'],['21LTC03','가덕도남서측'],['21LTC04','부산항신항'],
+                ['21LTC05','저도서측'],['21LTC06','내도동측'],['21LTC07','칠천도북서측'],['21LTC08','장사도북측'],
+                ['21LTC09','용초도북측'],['21LTC10','견내량해협'],['21LTC11','오곡도북측'],['21LTC12','곤리도남측'],
+                ['21LTC13','사량도북동측'],['21LTC14','신수도동측'],['98HG-1','횡간수도']
+            ]
+        },
+        {
+            key: 'east', label: '동해',
+            stations: [
+                ['DT_0020','울산'],['DT_0091','포항'],['DT_0039','왕돌초'],['DT_0011','후포'],
+                ['DT_0057','동해항'],['DT_0006','묵호'],['DT_0012','속초'],['DT_0013','울릉도']
+            ],
+            currents: [
+                ['16LTC14','울산신항'],['17LTC05','울도'],['17LTC07','울도남측'],['18LTC14','대왕암남측']
+            ]
+        },
+        {
+            key: 'jeju', label: '제주',
+            stations: [
+                ['DT_0004','제주'],['DT_0022','성산포'],['DT_0010','서귀포'],['DT_0023','모슬포'],['DT_0021','추자도']
+            ],
+            currents: [
+                ['02JJ-1','제주항'],['08JJ03','성산포'],['08JJ07','서귀포'],['08JJ13','애월항북측'],
+                ['08F','추자도남서측'],['10ED01','이어도'],['22MTC03','제주해협']
+            ]
+        },
+        {
+            key: 'ocean_base', label: '해양과학기지',
+            stations: [
+                ['DT_0042','교본초'],['IE_0060','이어도'],['IE_0061','신안가거초'],['IE_0062','옹진소청초']
+            ],
+            currents: []
+        }
+    ];
+
+    // ==================== 관측소/조류 연동 ====================
+    function getRegionByStationCode(code) {
+        for (const r of REGIONS) {
+            if (r.stations.some(s => s[0] === code)) return r;
+        }
+        return REGIONS[0];
+    }
+
+    function buildStationSelect() {
+        const sel = document.getElementById('stationSelect');
+        sel.innerHTML = '';
+        for (const r of REGIONS) {
+            const og = document.createElement('optgroup');
+            og.label = r.label;
+            for (const [code, name] of r.stations) {
+                const opt = document.createElement('option');
+                opt.value = code; opt.textContent = name;
+                og.appendChild(opt);
+            }
+            sel.appendChild(og);
+        }
+    }
+
+    function buildCurrentSelect(region) {
+        const sel = document.getElementById('currentSelect');
+        sel.innerHTML = '';
+        if (!region || region.currents.length === 0) {
+            const opt = document.createElement('option');
+            opt.value = ''; opt.textContent = '(이 지역에 조류 예보점 없음)';
+            sel.appendChild(opt);
+            return;
+        }
+        const og = document.createElement('optgroup');
+        og.label = region.label;
+        for (const [code, name] of region.currents) {
+            const opt = document.createElement('option');
+            opt.value = code; opt.textContent = name;
+            og.appendChild(opt);
+        }
+        sel.appendChild(og);
+    }
+
+    function updateRegionBadges(region) {
+        document.getElementById('stationRegion').textContent = region.label;
+        document.getElementById('currentRegion').textContent = region.label;
+    }
+
+    function onStationChange() {
+        const code = document.getElementById('stationSelect').value;
+        const region = getRegionByStationCode(code);
+        buildCurrentSelect(region);
+        updateRegionBadges(region);
+    }
+
+    // ==================== 검색 기능 ====================
+    function buildSearchIndex() {
+        const index = [];
+        for (const r of REGIONS) {
+            for (const [code, name] of r.stations) {
+                index.push({ type: 'obs', code, name, region: r, regionLabel: r.label });
+            }
+            for (const [code, name] of r.currents) {
+                index.push({ type: 'crnt', code, name, region: r, regionLabel: r.label });
+            }
+        }
+        return index;
+    }
+
+    const searchIndex = buildSearchIndex();
+
+    function doSearch(query) {
+        const q = query.trim().toLowerCase();
+        if (!q) return [];
+        return searchIndex.filter(item =>
+            item.name.toLowerCase().includes(q) ||
+            item.regionLabel.toLowerCase().includes(q) ||
+            item.code.toLowerCase().includes(q)
+        ).slice(0, 15);
+    }
+
+    function highlightMatch(text, query) {
+        const idx = text.toLowerCase().indexOf(query.toLowerCase());
+        if (idx < 0) return text;
+        return text.substring(0, idx) + '<em>' + text.substring(idx, idx + query.length) + '</em>' + text.substring(idx + query.length);
+    }
+
+    function renderSearchResults(results, query) {
+        const el = document.getElementById('searchResults');
+        if (results.length === 0) {
+            el.innerHTML = '<div class="search-no-result">검색 결과가 없습니다</div>';
+            el.classList.add('show');
+            return;
+        }
+        el.innerHTML = results.map((item, i) => `
+            <div class="search-result-item" data-idx="${i}">
+                <div class="name">${highlightMatch(item.name, query)}</div>
+                <div class="tags">
+                    <span class="tag ${item.type}">${item.type === 'obs' ? '관측소' : '조류예보점'}</span>
+                    <span class="tag region">${item.regionLabel}</span>
+                </div>
+            </div>
+        `).join('');
+        el.classList.add('show');
+
+        el.querySelectorAll('.search-result-item').forEach(div => {
+            div.addEventListener('click', () => {
+                const idx = parseInt(div.dataset.idx);
+                selectSearchResult(results[idx]);
+            });
+        });
+    }
+
+    function selectSearchResult(item) {
+        const stationSel = document.getElementById('stationSelect');
+        const currentSel = document.getElementById('currentSelect');
+
+        // 해당 지역의 관측소를 첫 번째로 선택
+        const region = item.region;
+        if (item.type === 'obs') {
+            stationSel.value = item.code;
+        } else {
+            // 조류예보점이면 해당 지역의 첫 번째 관측소 선택
+            if (region.stations.length > 0) {
+                stationSel.value = region.stations[0][0];
+            }
+        }
+        // 지역에 맞는 조류 예보점 목록 갱신
+        buildCurrentSelect(region);
+        updateRegionBadges(region);
+
+        if (item.type === 'crnt') {
+            currentSel.value = item.code;
+        }
+
+        // 검색창 닫기
+        document.getElementById('searchInput').value = item.name;
+        document.getElementById('searchResults').classList.remove('show');
+    }
+
+    // ==================== INIT ====================
+    document.addEventListener('DOMContentLoaded', () => {
+        const today = new Date();
+        document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+
+        // 관측소/조류 연동 초기화
+        buildStationSelect();
+        onStationChange();
+        document.getElementById('stationSelect').addEventListener('change', onStationChange);
+
+        // 탭 전환
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            });
+        });
+
+        // 검색 이벤트
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+        let debounceTimer = null;
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                const q = searchInput.value.trim();
+                if (q.length === 0) { searchResults.classList.remove('show'); return; }
+                const results = doSearch(q);
+                renderSearchResults(results, q);
+            }, 150);
+        });
+
+        searchInput.addEventListener('focus', () => {
+            const q = searchInput.value.trim();
+            if (q.length > 0) {
+                const results = doSearch(q);
+                renderSearchResults(results, q);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.search-bar')) {
+                searchResults.classList.remove('show');
+            }
+        });
+
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') searchResults.classList.remove('show');
+        });
+    });
+
+    function showToast(msg, isError = false) {
+        let toast = document.getElementById('toastMsg');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'toastMsg';
+            toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:8px;color:#fff;font-size:14px;z-index:9999;opacity:0;transition:opacity 0.3s;pointer-events:none;';
+            document.body.appendChild(toast);
+        }
+        toast.textContent = msg;
+        toast.style.background = isError ? '#e74c3c' : '#00e0ff';
+        toast.style.color = isError ? '#fff' : '#0a0f1a';
+        toast.style.opacity = '1';
+        setTimeout(() => { toast.style.opacity = '0'; }, 2500);
+    }
+
+    function getDateStr() { return document.getElementById('dateInput').value.replace(/-/g, ''); }
+    function getStation() { return document.getElementById('stationSelect').value; }
+    function getCurrentStation() { return document.getElementById('currentSelect').value; }
+
+    // ==================== GENERIC API CALL (Worker 프록시 경유) ====================
+    const PROXY_ENDPOINT_MAP = {
+        'tideFcstHghLw/GetTideFcstHghLwApiService': '/api/tide-hilo',
+        'surveyTideLevel/GetSurveyTideLevelApiService': '/api/tide-level',
+        'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
+    };
+
+    async function apiCall(path, params) {
+        const endpoint = PROXY_ENDPOINT_MAP[path];
+        if (!endpoint) throw new Error(`Unknown API path: ${path}`);
+
+        const url = new URL(`${API_BASE}${endpoint}`);
+        if (params.obsCode) url.searchParams.set('obsCode', params.obsCode);
+        if (params.reqDate) url.searchParams.set('reqDate', params.reqDate);
+
+        const resp = await fetch(url.toString());
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const json = await resp.json();
+
+        if (json.header && json.header.resultCode !== '00') {
+            throw new Error(json.header.resultMsg || 'API 오류');
+        }
+        return json.body?.items?.item || [];
+    }
+
+    // ==================== FETCH ALL ====================
+    async function fetchAll() {
+        const btn = document.getElementById('searchBtn');
+        btn.disabled = true; btn.textContent = '조회 중...';
+        try {
+            await Promise.all([fetchTideHighLow(), fetchTidePrediction(), fetchCurrentData()]);
+        } catch(e) { console.error(e); }
+        finally { btn.disabled = false; btn.textContent = '조회'; }
+    }
+
+    // ==================== 1) 고저조 (tideFcstHghLw) ====================
+    async function fetchTideHighLow() {
+        const summaryEl = document.getElementById('tideSummary');
+        const detailEl = document.getElementById('tideDetail');
+        summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
+
+        try {
+            const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
+                obsCode: getStation(),
+                reqDate: getDateStr(),
+                numOfRows: '20',
+                pageNo: '1'
+            });
+
+            if (!items || items.length === 0) {
+                summaryEl.innerHTML = '<div class="error-msg">데이터가 없습니다.</div>';
+                detailEl.innerHTML = '';
+                return;
+            }
+
+            const dateStr = getDateStr();
+            const datePrefix = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+            const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
+            const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
+
+            const highs = displayItems.filter(i => parseInt(i.extrSe) % 2 === 1);
+            const lows = displayItems.filter(i => parseInt(i.extrSe) % 2 === 0);
+
+            const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => h.predcTdlvVl)) : null;
+            const minLow = lows.length > 0 ? Math.min(...lows.map(l => l.predcTdlvVl)) : null;
+            const diff = (maxHigh !== null && minLow !== null) ? maxHigh - minLow : null;
+
+            const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
+            const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
+
+            summaryEl.innerHTML = `
+                <div class="tide-summary">
+                    <div class="tide-item high">
+                        <div class="label">최고조위</div>
+                        <div class="value">${maxHigh !== null ? maxHigh.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="time">${bestHigh ? bestHigh.predcDt.substring(11, 16) : '-'}</div>
+                    </div>
+                    <div class="tide-item low">
+                        <div class="label">최저조위</div>
+                        <div class="value">${minLow !== null ? minLow.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="time">${bestLow ? bestLow.predcDt.substring(11, 16) : '-'}</div>
+                    </div>
+                    <div class="tide-item diff">
+                        <div class="label">조차 (고저차)</div>
+                        <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="time">${diff !== null ? (diff / 100).toFixed(2) + ' m' : '-'}</div>
+                    </div>
+                </div>`;
+
+            detailEl.innerHTML = `
+                <div class="tide-detail-list">
+                    ${displayItems.map(i => {
+                        const isHigh = parseInt(i.extrSe) % 2 === 1;
+                        const label = isHigh ? '고조' : '저조';
+                        return `<div class="tide-tag ${isHigh ? 'high' : 'low'}">${label} ${i.predcDt.substring(11, 16)} · ${i.predcTdlvVl.toFixed(0)}cm</div>`;
+                    }).join('')}
+                </div>`;
+
+            window._hlData = displayItems;
+        } catch(e) {
+            summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${e.message}</div>`;
+            detailEl.innerHTML = '';
+        }
+    }
+
+    // ==================== 2) 10분 단위 조위 그래프 (surveyTideLevel) ====================
+    async function fetchTidePrediction() {
+        try {
+            const items = await apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                obsCode: getStation(),
+                reqDate: getDateStr(),
+                min: '10',
+                numOfRows: '300',
+                pageNo: '1'
+            });
+
+            if (!items || items.length === 0) {
+                renderTideChart([], []); return;
+            }
+
+            const labels = items.map(d => d.obsrvnDt.substring(11, 16));
+            const predicted = items.map(d => d.bscTdlvHgt);
+            const actual = items.map(d => d.tdlvHgt);
+
+            let annotations = {};
+            const hlData = window._hlData || [];
+            hlData.forEach((item, idx) => {
+                const time = item.predcDt.substring(11, 16);
+                const nearIdx = labels.findIndex(l => {
+                    const [h1, m1] = l.split(':').map(Number);
+                    const [h2, m2] = time.split(':').map(Number);
+                    return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) <= 5;
+                });
+                if (nearIdx < 0) return;
+                const isHigh = parseInt(item.extrSe) % 2 === 1;
+
+                annotations['hl_' + idx] = {
+                    type: 'point', xValue: nearIdx, yValue: item.predcTdlvVl,
+                    backgroundColor: isHigh ? 'rgba(255,107,107,0.8)' : 'rgba(78,205,196,0.8)',
+                    radius: 7, borderColor: '#fff', borderWidth: 2,
+                };
+                annotations['hl_label_' + idx] = {
+                    type: 'label', xValue: nearIdx,
+                    yValue: item.predcTdlvVl + (isHigh ? 20 : -20),
+                    content: `${isHigh ? '고조' : '저조'} ${item.predcTdlvVl.toFixed(0)}cm`,
+                    color: isHigh ? '#ff6b6b' : '#4ecdc4',
+                    font: { size: 11, weight: 'bold' },
+                };
+            });
+
+            renderTideChart(labels, predicted, actual, annotations);
+        } catch(e) {
+            console.error('조위 그래프 오류:', e);
+            renderTideChart([], []);
+        }
+    }
+
+    function renderTideChart(labels, predicted, actual, annotations = {}) {
+        const ctx = document.getElementById('tideChart').getContext('2d');
+        if (tideChart) tideChart.destroy();
+        if (labels.length === 0) { tideChart = null; return; }
+
+        const grad1 = ctx.createLinearGradient(0, 0, 0, 320);
+        grad1.addColorStop(0, 'rgba(79,195,247,0.3)');
+        grad1.addColorStop(1, 'rgba(79,195,247,0.02)');
+
+        const datasets = [{
+            label: '예측 조위 (cm)',
+            data: predicted,
+            borderColor: '#4fc3f7',
+            backgroundColor: grad1,
+            borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+        }];
+
+        if (actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i])) {
+            datasets.push({
+                label: '실측 조위 (cm)',
+                data: actual,
+                borderColor: '#ffa726',
+                borderWidth: 1.5, borderDash: [4, 4],
+                fill: false, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+            });
+        }
+
+        tideChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { display: datasets.length > 1, labels: { color: '#7a8ba3', font: { size: 11 } } },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#4fc3f7',
+                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
+                        callbacks: { label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} cm` }
+                    },
+                    annotation: { annotations }
+                },
+                scales: {
+                    x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                }
+            }
+        });
+    }
+
+    // ==================== 3) 조류 (crntFcstTime 시계열) ====================
+    async function fetchCurrentData() {
+        const infoEl = document.getElementById('currentInfo');
+        const cStation = getCurrentStation();
+        if (!cStation) {
+            infoEl.innerHTML = '<div class="error-msg">이 지역에는 조류 예보점이 없습니다.</div>';
+            renderCurrentChart([]);
+            return;
+        }
+        infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>조류 데이터 로딩...</div></div>';
+
+        try {
+            const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+                obsCode: cStation,
+                reqDate: getDateStr(),
+                numOfRows: '300',
+                pageNo: '1'
+            });
+
+            if (!items || items.length === 0) {
+                infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
+                renderCurrentChart([]); return;
+            }
+
+            const filtered = items.filter((_, idx) => idx % 10 === 0);
+            renderCurrentTable(filtered, infoEl);
+            renderCurrentChart(filtered);
+        } catch(e) {
+            infoEl.innerHTML = `<div class="error-msg">조류 오류: ${e.message}</div>`;
+            renderCurrentChart([]);
+        }
+    }
+
+    function getSpeedColor(speed) {
+        const s = parseFloat(speed);
+        if (s >= 100) return '#ff6b6b';
+        if (s >= 50) return '#ffa726';
+        if (s >= 20) return '#4fc3f7';
+        return '#4ecdc4';
+    }
+
+    function renderCurrentTable(items, el) {
+        const maxSpeed = Math.max(...items.map(i => parseFloat(i.crsp) || 0), 1);
+
+        el.innerHTML = `
+            <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
+                예보점: <strong style="color:var(--text)">${items[0]?.obsvtrNm || '-'}</strong> ·
+                총 ${items.length}건 (10분 간격)
+            </div>
+            <div style="max-height:400px;overflow-y:auto;">
+            <table class="current-table">
+                <thead><tr><th>시간</th><th>유향</th><th>유속 (cm/s)</th><th>세기</th></tr></thead>
+                <tbody>
+                    ${items.map(item => {
+                        const time = item.predcDt ? item.predcDt.substring(11, 16) : '-';
+                        const speed = parseFloat(item.crsp) || 0;
+                        const pct = (speed / maxSpeed) * 100;
+                        const color = getSpeedColor(speed);
+                        return `<tr>
+                            <td>${time}</td>
+                            <td style="color:${color};">${item.crdir || '-'}</td>
+                            <td>${speed.toFixed(1)}</td>
+                            <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+            </table>
+            </div>`;
+    }
+
+    function renderCurrentChart(items) {
+        const ctx = document.getElementById('currentChart').getContext('2d');
+        if (currentChart) currentChart.destroy();
+        if (!items || items.length === 0) { currentChart = null; return; }
+
+        const labels = items.map(i => i.predcDt ? i.predcDt.substring(11, 16) : '-');
+        const speeds = items.map(i => parseFloat(i.crsp) || 0);
+
+        const gradient = ctx.createLinearGradient(0, 0, 0, 320);
+        gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
+        gradient.addColorStop(1, 'rgba(0,229,255,0.02)');
+
+        currentChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: '유속 (cm/s)', data: speeds,
+                    borderColor: '#00e5ff', backgroundColor: gradient,
+                    borderWidth: 2, fill: true, tension: 0.4,
+                    pointRadius: 0, pointHoverRadius: 5,
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
+                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
+                        callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} cm/s` }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm/s' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                }
+            }
+        });
+    }
+    </script>
+</body>
+</html>
