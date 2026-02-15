@@ -2,11 +2,10 @@
 // 공공데이터포털 + KHOA 좌표 기반 API를 캐싱하여 프록시하는 Cloudflare Worker
 // API 키를 서버에 숨기고, 동일 요청을 Cache API로 캐싱
 
-const UPSTREAM_BASE = 'http://apis.data.go.kr/1192136';
+const UPSTREAM_BASE = 'https://apis.data.go.kr/1192136';
 
 // ==================== KHOA 좌표 기반 API ====================
 const KHOA_BASE = 'https://www.khoa.go.kr/api/oceangrid';
-const KHOA_SERVICE_KEY = 'wldhxng34hkddbsgm81lwldhxng34hkddbsgm81l==';
 
 const ENDPOINT_MAP = {
   'tide-hilo':  'tideFcstHghLw/GetTideFcstHghLwApiService',
@@ -20,25 +19,39 @@ const DEFAULT_PARAMS = {
   'current':    { numOfRows: '300', pageNo: '1', type: 'json' },
 };
 
-const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Max-Age': '86400',
-};
+const ALLOWED_ORIGINS = new Set([
+  'https://fishing-tide.pages.dev',
+]);
+
+// localhost/127.0.0.1 with any port (dev only)
+const LOCAL_ORIGIN_RE = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/;
+
+function isOriginAllowed(origin) {
+  return ALLOWED_ORIGINS.has(origin) || LOCAL_ORIGIN_RE.test(origin);
+}
+
+function getCorsHeaders(request) {
+  const origin = (request && request.headers && request.headers.get('Origin')) || '';
+  return {
+    'Access-Control-Allow-Origin': isOriginAllowed(origin) ? origin : 'https://fishing-tide.pages.dev',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
 
 // ==================== Helpers ====================
 
-function jsonResponse(data, status = 200) {
+function jsonResponse(data, status = 200, request = null) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+    headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
   });
 }
 
-function addCorsHeaders(response) {
+function addCorsHeaders(response, request) {
   const newHeaders = new Headers(response.headers);
-  Object.entries(CORS_HEADERS).forEach(([k, v]) => newHeaders.set(k, v));
+  Object.entries(getCorsHeaders(request)).forEach(([k, v]) => newHeaders.set(k, v));
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -46,8 +59,8 @@ function addCorsHeaders(response) {
   });
 }
 
-function handleOptions() {
-  return new Response(null, { status: 204, headers: CORS_HEADERS });
+function handleOptions(request) {
+  return new Response(null, { status: 204, headers: getCorsHeaders(request) });
 }
 
 function validateParams(obsCode, reqDate) {
@@ -118,16 +131,16 @@ function buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey) {
 
 // ==================== KHOA Helpers ====================
 
-function validateKhoaCurrentPointParams(lat, lon, date) {
-  if (!lat || isNaN(lat) || lat < 32 || lat > 39) {
-    return 'Invalid lat (expected 32~39)';
-  }
-  if (!lon || isNaN(lon) || lon < 124 || lon > 132) {
-    return 'Invalid lon (expected 124~132)';
-  }
-  if (!date || !/^\d{8}$/.test(date)) {
-    return 'Invalid date (expected YYYYMMDD)';
-  }
+const COORD_RE = /^-?\d+(\.\d+)?$/;
+
+function validateKhoaCurrentPointParams(latRaw, lonRaw, date) {
+  if (!latRaw || !COORD_RE.test(latRaw)) return 'Invalid lat (expected numeric)';
+  if (!lonRaw || !COORD_RE.test(lonRaw)) return 'Invalid lon (expected numeric)';
+  const lat = parseFloat(latRaw);
+  const lon = parseFloat(lonRaw);
+  if (lat < 32 || lat > 39) return 'Invalid lat (expected 32~39)';
+  if (lon < 124 || lon > 132) return 'Invalid lon (expected 124~132)';
+  if (!date || !/^\d{8}$/.test(date)) return 'Invalid date (expected YYYYMMDD)';
   return null;
 }
 
@@ -135,12 +148,15 @@ function validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, max
   if (!date || !/^\d{8}$/.test(date)) {
     return 'Invalid date (expected YYYYMMDD)';
   }
-  const h = parseInt(hour);
-  const m = parseInt(minute);
-  if (isNaN(h) || h < 0 || h > 23) return 'Invalid hour (0~23)';
-  if (isNaN(m) || m < 0 || m > 59) return 'Invalid minute (0~59)';
+  if (!hour || !/^\d{1,2}$/.test(hour)) return 'Invalid hour';
+  if (!minute || !/^\d{1,2}$/.test(minute)) return 'Invalid minute';
+  const h = parseInt(hour, 10);
+  const m = parseInt(minute, 10);
+  if (h < 0 || h > 23) return 'Invalid hour (0~23)';
+  if (m < 0 || m > 59) return 'Invalid minute (0~59)';
+  const coordRegex = /^-?\d+(\.\d+)?$/;
   for (const [name, val] of [['minX', minX], ['maxX', maxX], ['minY', minY], ['maxY', maxY]]) {
-    if (!val || isNaN(parseFloat(val))) return `Invalid ${name}`;
+    if (!val || !coordRegex.test(val)) return `Invalid ${name}`;
   }
   return null;
 }
@@ -149,9 +165,9 @@ function buildKhoaCacheKey(endpoint, paramsStr) {
   return new Request(`https://tide-cache.internal/khoa/${endpoint}/${paramsStr}`);
 }
 
-function buildKhoaCurrentPointUrl(lat, lon, date) {
+function buildKhoaCurrentPointUrl(lat, lon, date, serviceKey) {
   const url = new URL(`${KHOA_BASE}/tidalCurrentPoint/search.do`);
-  url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
+  url.searchParams.set('ServiceKey', serviceKey);
   url.searchParams.set('Sdate', date);
   url.searchParams.set('SHour', '00');
   url.searchParams.set('SMinute', '00');
@@ -164,9 +180,9 @@ function buildKhoaCurrentPointUrl(lat, lon, date) {
   return url.toString();
 }
 
-function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY) {
+function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, serviceKey) {
   const url = new URL(`${KHOA_BASE}/tidalCurrentArea/search.do`);
-  url.searchParams.set('ServiceKey', KHOA_SERVICE_KEY);
+  url.searchParams.set('ServiceKey', serviceKey);
   url.searchParams.set('Date', date);
   url.searchParams.set('Hour', hour);
   url.searchParams.set('Minute', minute);
@@ -180,14 +196,19 @@ function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY) {
 
 // ==================== KHOA Request Handler ====================
 
-async function handleKhoaRequest(khoaEndpoint, url, ctx) {
+async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
+  const khoaKey = env.KHOA_SERVICE_KEY;
+  if (!khoaKey) {
+    return jsonResponse({ error: 'Server configuration error: KHOA API key not set' }, 500, request);
+  }
+
   if (khoaEndpoint === 'current-point') {
     const lat = url.searchParams.get('lat');
     const lon = url.searchParams.get('lon');
     const date = url.searchParams.get('date');
 
-    const err = validateKhoaCurrentPointParams(parseFloat(lat), parseFloat(lon), date);
-    if (err) return jsonResponse({ error: err }, 400);
+    const err = validateKhoaCurrentPointParams(lat, lon, date);
+    if (err) return jsonResponse({ error: err }, 400, request);
 
     // 캐시 확인
     const cacheParamsStr = `${lat}_${lon}_${date}`;
@@ -195,34 +216,34 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
     const cache = caches.default;
     const cached = await cache.match(cacheKey);
     if (cached) {
-      const resp = addCorsHeaders(cached);
+      const resp = addCorsHeaders(cached, request);
       resp.headers.set('X-Cache', 'HIT');
       return resp;
     }
 
     // KHOA API 호출
-    const upstreamUrl = buildKhoaCurrentPointUrl(lat, lon, date);
+    const upstreamUrl = buildKhoaCurrentPointUrl(lat, lon, date, khoaKey);
     let upstreamResp;
     try {
       upstreamResp = await fetch(upstreamUrl);
     } catch (e) {
-      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502);
+      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
     }
 
     if (!upstreamResp.ok) {
-      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502);
+      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
     }
 
     let data;
     try {
       data = await upstreamResp.json();
     } catch (e) {
-      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502);
+      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
     }
 
     // KHOA 에러 체크: result.meta 없거나 data 없으면 에러
     if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400);
+      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400, request);
     }
 
     // 캐싱
@@ -234,7 +255,7 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
         'Cache-Control': `public, max-age=${ttl}`,
         'X-Cache': 'MISS',
         'X-Cache-TTL': `${ttl}s`,
-        ...CORS_HEADERS,
+        ...getCorsHeaders(request),
       },
     });
 
@@ -251,7 +272,7 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
     const maxY = url.searchParams.get('maxY');
 
     const err = validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, maxY);
-    if (err) return jsonResponse({ error: err }, 400);
+    if (err) return jsonResponse({ error: err }, 400, request);
 
     // 캐시 확인
     const cacheParamsStr = `${date}_${hour}_${minute}_${minX}_${maxX}_${minY}_${maxY}`;
@@ -259,33 +280,33 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
     const cache = caches.default;
     const cached = await cache.match(cacheKey);
     if (cached) {
-      const resp = addCorsHeaders(cached);
+      const resp = addCorsHeaders(cached, request);
       resp.headers.set('X-Cache', 'HIT');
       return resp;
     }
 
     // KHOA API 호출
-    const upstreamUrl = buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY);
+    const upstreamUrl = buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, khoaKey);
     let upstreamResp;
     try {
       upstreamResp = await fetch(upstreamUrl);
     } catch (e) {
-      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502);
+      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
     }
 
     if (!upstreamResp.ok) {
-      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502);
+      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
     }
 
     let data;
     try {
       data = await upstreamResp.json();
     } catch (e) {
-      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502);
+      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
     }
 
     if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400);
+      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400, request);
     }
 
     // 캐싱 (영역 조류는 특정 시각 데이터 → 같은 TTL)
@@ -297,7 +318,7 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
         'Cache-Control': `public, max-age=${ttl}`,
         'X-Cache': 'MISS',
         'X-Cache-TTL': `${ttl}s`,
-        ...CORS_HEADERS,
+        ...getCorsHeaders(request),
       },
     });
 
@@ -305,36 +326,36 @@ async function handleKhoaRequest(khoaEndpoint, url, ctx) {
     return response;
   }
 
-  return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404);
+  return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404, request);
 }
 
 // ==================== 음양력 변환 (KASI 공공데이터포털) ====================
 
-const LUNAR_API_BASE = 'http://apis.data.go.kr/B090041/openapi/service/LrsrCldInfoService/getLunCalInfo';
+const LUNAR_API_BASE = 'https://apis.data.go.kr/B090041/openapi/service/LrsrCldInfoService/getLunCalInfo';
 
-async function handleLunarRequest(url, env, ctx) {
+async function handleLunarRequest(url, env, ctx, request) {
   const solYear = url.searchParams.get('solYear');
   const solMonth = url.searchParams.get('solMonth');
   const solDay = url.searchParams.get('solDay');
 
   // 입력 검증
-  if (!solYear || !/^\d{4}$/.test(solYear)) return jsonResponse({ error: 'Invalid solYear' }, 400);
-  if (!solMonth || !/^\d{2}$/.test(solMonth)) return jsonResponse({ error: 'Invalid solMonth' }, 400);
-  if (!solDay || !/^\d{2}$/.test(solDay)) return jsonResponse({ error: 'Invalid solDay' }, 400);
+  if (!solYear || !/^\d{4}$/.test(solYear)) return jsonResponse({ error: 'Invalid solYear' }, 400, request);
+  if (!solMonth || !/^\d{2}$/.test(solMonth)) return jsonResponse({ error: 'Invalid solMonth' }, 400, request);
+  if (!solDay || !/^\d{2}$/.test(solDay)) return jsonResponse({ error: 'Invalid solDay' }, 400, request);
 
   // 캐시 확인 (음력 데이터는 불변 → 30일 캐시)
   const cacheKey = new Request(`https://tide-cache.internal/lunar/${solYear}${solMonth}${solDay}`);
   const cache = caches.default;
   const cached = await cache.match(cacheKey);
   if (cached) {
-    const resp = addCorsHeaders(cached);
+    const resp = addCorsHeaders(cached, request);
     resp.headers.set('X-Cache', 'HIT');
     return resp;
   }
 
   const apiKey = env.DATA_GO_KR_API_KEY;
   if (!apiKey) {
-    return jsonResponse({ error: 'Server configuration error: API key not set' }, 500);
+    return jsonResponse({ error: 'Server configuration error: API key not set' }, 500, request);
   }
 
   const upstreamUrl = new URL(LUNAR_API_BASE);
@@ -348,24 +369,24 @@ async function handleLunarRequest(url, env, ctx) {
   try {
     upstreamResp = await fetch(upstreamUrl.toString());
   } catch (e) {
-    return jsonResponse({ error: 'Lunar API fetch failed', detail: e.message }, 502);
+    return jsonResponse({ error: 'Lunar API fetch failed', detail: e.message }, 502, request);
   }
 
   if (!upstreamResp.ok) {
-    return jsonResponse({ error: `Lunar API returned HTTP ${upstreamResp.status}` }, 502);
+    return jsonResponse({ error: `Lunar API returned HTTP ${upstreamResp.status}` }, 502, request);
   }
 
   let data;
   try {
     data = await upstreamResp.json();
   } catch (e) {
-    return jsonResponse({ error: 'Failed to parse lunar API response' }, 502);
+    return jsonResponse({ error: 'Failed to parse lunar API response' }, 502, request);
   }
 
   // 응답에서 음력 데이터 추출
   const item = data?.response?.body?.items?.item;
   if (!item) {
-    return jsonResponse({ error: 'No lunar data found', raw: data }, 400);
+    return jsonResponse({ error: 'No lunar data found', raw: data }, 400, request);
   }
 
   // 간결한 응답으로 가공
@@ -388,7 +409,7 @@ async function handleLunarRequest(url, env, ctx) {
       'Cache-Control': `public, max-age=${ttl}`,
       'X-Cache': 'MISS',
       'X-Cache-TTL': `${ttl}s`,
-      ...CORS_HEADERS,
+      ...getCorsHeaders(request),
     },
   });
 
@@ -404,22 +425,22 @@ export default {
 
     // CORS preflight
     if (request.method === 'OPTIONS') {
-      return handleOptions();
+      return handleOptions(request);
     }
 
     if (request.method !== 'GET') {
-      return jsonResponse({ error: 'Method not allowed' }, 405);
+      return jsonResponse({ error: 'Method not allowed' }, 405, request);
     }
 
     // 음양력 변환 API: GET /api/lunar?solYear=2026&solMonth=09&solDay=01
     if (url.pathname === '/api/lunar') {
-      return handleLunarRequest(url, env, ctx);
+      return handleLunarRequest(url, env, ctx, request);
     }
 
     // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
     const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
     if (khoaMatch) {
-      return handleKhoaRequest(khoaMatch[1], url, ctx);
+      return handleKhoaRequest(khoaMatch[1], url, env, ctx, request);
     }
 
     // 기존 공공데이터포털 API 라우팅: GET /api/{endpoint}
@@ -432,7 +453,7 @@ export default {
           '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/lunar'
         ]
-      }, 404);
+      }, 404, request);
     }
 
     const endpoint = match[1];
@@ -442,7 +463,7 @@ export default {
     // 입력 검증
     const validationError = validateParams(obsCode, reqDate);
     if (validationError) {
-      return jsonResponse({ error: validationError }, 400);
+      return jsonResponse({ error: validationError }, 400, request);
     }
 
     // 캐시 확인
@@ -450,7 +471,7 @@ export default {
     const cache = caches.default;
     const cached = await cache.match(cacheKey);
     if (cached) {
-      const resp = addCorsHeaders(cached);
+      const resp = addCorsHeaders(cached, request);
       resp.headers.set('X-Cache', 'HIT');
       return resp;
     }
@@ -458,7 +479,7 @@ export default {
     // 업스트림 API 호출
     const apiKey = env.DATA_GO_KR_API_KEY;
     if (!apiKey) {
-      return jsonResponse({ error: 'Server configuration error: API key not set' }, 500);
+      return jsonResponse({ error: 'Server configuration error: API key not set' }, 500, request);
     }
 
     const upstreamUrl = buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey);
@@ -467,23 +488,23 @@ export default {
     try {
       upstreamResp = await fetch(upstreamUrl);
     } catch (e) {
-      return jsonResponse({ error: 'Upstream fetch failed', detail: e.message }, 502);
+      return jsonResponse({ error: 'Upstream fetch failed', detail: e.message }, 502, request);
     }
 
     if (!upstreamResp.ok) {
-      return jsonResponse({ error: `Upstream returned HTTP ${upstreamResp.status}` }, 502);
+      return jsonResponse({ error: `Upstream returned HTTP ${upstreamResp.status}` }, 502, request);
     }
 
     let data;
     try {
       data = await upstreamResp.json();
     } catch (e) {
-      return jsonResponse({ error: 'Failed to parse upstream response' }, 502);
+      return jsonResponse({ error: 'Failed to parse upstream response' }, 502, request);
     }
 
     // API 레벨 에러 확인 → 캐싱하지 않음
     if (data.header && data.header.resultCode !== '00') {
-      return jsonResponse(data, 400);
+      return jsonResponse(data, 400, request);
     }
 
     // 성공 응답 → 캐싱
@@ -495,7 +516,7 @@ export default {
         'Cache-Control': `public, max-age=${ttl}`,
         'X-Cache': 'MISS',
         'X-Cache-TTL': `${ttl}s`,
-        ...CORS_HEADERS,
+        ...getCorsHeaders(request),
       },
     });
 
