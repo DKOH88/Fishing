@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>물때 & 조류 정보</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/korean-lunar-calendar/dist/korean-lunar-calendar.min.js"></script>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://tide-api-proxy.odk297.workers.dev; img-src 'self' data:;">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js" integrity="sha384-3N9GHhCtN3CQef6tNfqgZlv7sQLYIkcChN+uaTZ7xVdzKYp/SjBNPxa92+hM7EAY" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/korean-lunar-calendar/dist/korean-lunar-calendar.min.js" integrity="sha384-j2B3PtxdEJouApN6GZLZXajab489KytFYmY/gDo6Dp3afstT7oZmYu0YvIik1OoV" crossorigin="anonymous"></script>
     <style>
         :root {
             --bg: #0a1628;
@@ -36,7 +37,7 @@
         .control-group label { display: block; font-size: 0.78em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
         select, input[type="date"] { width: 100%; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; font-family: 'Segoe UI', -apple-system, sans-serif; outline: none; cursor: pointer; }
         input[type="date"] { position: relative; color-scheme: dark; }
-        input[type="date"]::-webkit-datetime-edit { color: var(--text); font-family: 'Segoe UI', -apple-system, sans-serif; }
+        input[type="date"]::-webkit-datetime-edit { color: var(--text); font-family: 'Segoe UI', -apple-system, sans-serif; width: 100%; text-align: center; padding: 0; margin: auto; }
         input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
         select:focus, input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
         .btn { padding: 10px 24px; background: linear-gradient(135deg, #1a73e8, #4fc3f7); border: none; border-radius: 8px; color: #fff; font-size: 0.95em; font-weight: 600; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
@@ -85,7 +86,8 @@
         /* 검색 바 */
         .search-bar { position: relative; margin-bottom: 16px; }
         .search-bar input { width: 100%; padding: 12px 16px 12px 40px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.95em; outline: none; }
-        .search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
+        .search-bar:focus-within { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(79,195,247,0.2); }
+        .search-bar input:focus { outline: none; box-shadow: none; }
         .search-bar .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1em; color: var(--muted); pointer-events: none; }
         .search-results { position: absolute; top: 100%; left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; max-height: 320px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 8px 24px rgba(0,0,0,0.4); margin-top: 4px; }
         .search-results.show { display: block; }
@@ -101,24 +103,50 @@
         .search-result-item .tag.region { background: rgba(255,167,38,0.15); color: var(--warn); }
         .search-no-result { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85em; }
         .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.72em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 8px; vertical-align: middle; }
-        .mulddae-card { display: flex; align-items: center; gap: 20px; flex-wrap: nowrap; }
-        .mulddae-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 90px; padding: 14px 20px; border-radius: 16px; font-weight: 700; flex-shrink: 0; }
-        .mulddae-badge .mulddae-emoji { font-size: 1.8em; line-height: 1; }
-        .mulddae-badge .mulddae-num { font-size: 1.4em; margin-top: 4px; }
-        .mulddae-detail { flex: 1; font-size: 1em; color: var(--muted); line-height: 1.8; }
-        .mulddae-detail .mulddae-title { font-size: 1.15em; color: var(--text); font-weight: 600; margin-bottom: 4px; }
-        .mulddae-pct-bar { display: inline-block; width: 100px; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; vertical-align: middle; margin: 0 8px; }
-        .mulddae-pct-bar-fill { height: 100%; border-radius: 5px; }
-        .mulddae-desc { font-size: 0.95em; margin-top: 2px; }
+        .mulddae-card { display: flex; flex-direction: column; gap: 8px; }
+        .mulddae-row1 { display: flex; align-items: center; gap: 10px; }
+        .mulddae-badge { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 12px; font-weight: 700; flex-shrink: 0; }
+        .mulddae-badge .mulddae-emoji { font-size: 1.3em; line-height: 1; }
+        .mulddae-badge .mulddae-num { font-size: 1.1em; }
+        .mulddae-pct-wrap { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+        .mulddae-pct-bar { display: inline-block; width: 80px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; vertical-align: middle; flex-shrink: 0; }
+        .mulddae-pct-bar-fill { height: 100%; border-radius: 4px; }
+        .mulddae-desc { font-size: 0.85em; color: var(--muted); }
+        .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
 
         @media (max-width: 600px) {
             .controls { flex-direction: column; }
             .control-group { min-width: 100%; }
-            .chart-container { height: 250px; }
-            .tide-summary { grid-template-columns: 1fr 1fr; }
+            .chart-container { height: 260px; }
+            .tide-summary { grid-template-columns: repeat(3, 1fr); gap: 8px; }
             header h1 { font-size: 1.3em; }
-            .mulddae-card { flex-wrap: wrap; }
-            .mulddae-badge { min-width: 80px; }
+            .mulddae-card { gap: 6px; }
+            .mulddae-row1 { flex-wrap: wrap; gap: 8px; }
+            .species-btns { flex-wrap: wrap !important; }
+            .card-title { flex-wrap: wrap; }
+        }
+        @media (max-width: 480px) {
+            .container { padding: 10px; }
+            header { padding: 12px 0 8px; }
+            header h1 { font-size: 1.15em; }
+            .card { padding: 14px; margin-bottom: 12px; }
+            .card-title { font-size: 0.9em; margin-bottom: 10px; }
+            .tide-summary { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+            .tide-item { padding: 10px 4px; }
+            .tide-item .value { font-size: 1.3em; }
+            .tide-item .label { font-size: 0.7em; }
+            .tide-item .time { font-size: 0.78em; }
+            .chart-container { height: 240px; }
+            .species-btn { font-size: 0.7em !important; padding: 3px 8px !important; }
+            .mulddae-card { gap: 5px; }
+            .mulddae-badge { padding: 5px 10px; }
+            .mulddae-badge .mulddae-emoji { font-size: 1.1em; }
+            .mulddae-badge .mulddae-num { font-size: 1em; }
+            .mulddae-desc { font-size: 0.8em; }
+            .tab-btn { padding: 8px 14px; font-size: 0.85em; }
+            .btn { padding: 8px 16px; font-size: 0.88em; }
+            .sun-row { font-size: 0.9em; }
+            .sun-row .sun-time { font-size: 1em; }
         }
     </style>
 </head>
@@ -128,40 +156,55 @@
             <h1><span class="wave">🌊</span> 물때 & 조류 정보</h1>
         </header>
 
+        <!-- Controls -->
+        <div class="controls">
+            <div class="control-group" style="display:flex;gap:8px;flex-wrap:nowrap;align-items:flex-end;">
+                <div style="flex:1;min-width:0;">
+                    <label>관측소 (조위) <span class="region-badge" id="stationRegion">인천/경기</span></label>
+                    <select id="stationSelect"></select>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <label>조류 예보점 <span class="region-badge" id="currentRegion">인천/경기</span></label>
+                    <select id="currentSelect"></select>
+                </div>
+            </div>
+        </div>
+
         <!-- 검색 -->
-        <div class="search-bar" id="searchBar">
-            <span class="search-icon">🔍</span>
-            <input type="text" id="searchInput" placeholder="검색 (예: 인천, 오천항, 대천항, 여수...)" autocomplete="off" />
+        <div class="search-bar" id="searchBar" style="display:flex;align-items:center;gap:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0;cursor:text;" onclick="document.getElementById('searchInput').focus();">
+            <span class="search-icon" style="position:static;transform:none;padding-left:14px;flex-shrink:0;">🔍</span>
+            <input type="text" id="searchInput" placeholder="검색 (예: 인천, 오천항, 대천항, 여수...)" autocomplete="off" style="flex:1;min-width:60px;background:transparent;border:none;padding:12px 8px 12px 8px;" />
+            <span id="searchPortInfo" style="display:none;font-size:0.78em;color:var(--muted);white-space:nowrap;padding-right:12px;flex-shrink:0;">→ 조위: <strong id="searchPortStation" style="color:var(--primary)"></strong> · 조류: <strong id="searchPortCurrent" style="color:var(--accent)"></strong></span>
             <div class="search-results" id="searchResults"></div>
         </div>
 
-        <!-- Controls -->
-        <div class="controls">
+        <!-- 날짜 컨트롤 -->
+        <div class="controls" style="margin-top:0;">
             <div class="control-group">
-                <label>관측소 (조위) <span class="region-badge" id="stationRegion">인천/경기</span></label>
-                <select id="stationSelect"></select>
-            </div>
-            <div class="control-group">
-                <label>조류 예보점 <span class="region-badge" id="currentRegion">인천/경기</span></label>
-                <select id="currentSelect"></select>
-            </div>
-            <div class="control-group">
-                <div style="display:flex;align-items:center;gap:4px;">
-                    <span style="font-size:0.75em;color:var(--muted);text-align:center;min-width:52px;">◀ 월 ▶</span>
-                    <span style="font-size:0.75em;color:var(--muted);flex:1;text-align:center;">날짜</span>
-                    <span style="font-size:0.75em;color:var(--muted);text-align:center;min-width:52px;">◀ 일 ▶</span>
+                <div style="display:flex;align-items:flex-end;gap:4px;">
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                        <span style="font-size:0.85em;color:var(--muted);">월</span>
+                        <div style="display:flex;gap:4px;align-items:stretch;">
+                            <button class="btn" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;" onclick="shiftMonth(-1)">◀</button>
+                            <button class="btn" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;" onclick="shiftMonth(1)">▶</button>
+                        </div>
+                    </div>
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;">
+                        <span style="font-size:0.85em;color:var(--muted);">날짜</span>
+                        <div style="position:relative;width:100%;height:36px;">
+                            <input type="date" id="dateInput" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;" />
+                            <div id="dateDisplay" onclick="document.getElementById('dateInput').showPicker?document.getElementById('dateInput').showPicker():document.getElementById('dateInput').focus()" style="width:100%;height:36px;line-height:36px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1em;text-align:center;cursor:pointer;position:relative;z-index:1;box-sizing:border-box;">2026년 02월 15일</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+                        <span style="font-size:0.85em;color:var(--muted);">일</span>
+                        <div style="display:flex;gap:4px;align-items:stretch;">
+                            <button class="btn" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;" onclick="shiftDay(-1)">◀</button>
+                            <button class="btn" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;" onclick="shiftDay(1)">▶</button>
+                        </div>
+                    </div>
+                    <button class="btn" id="searchBtn" style="padding:0 12px;font-size:0.9em;min-width:0;height:36px;align-self:flex-end;" onclick="fetchAll()">조회</button>
                 </div>
-                <div style="display:flex;align-items:center;gap:4px;">
-                    <button class="btn" style="padding:6px 8px;font-size:0.8em;min-width:0;" onclick="shiftMonth(-1)">◀</button>
-                    <button class="btn" style="padding:6px 8px;font-size:0.8em;min-width:0;" onclick="shiftMonth(1)">▶</button>
-                    <input type="date" id="dateInput" style="flex:1;" />
-                    <button class="btn" style="padding:6px 8px;font-size:0.8em;min-width:0;" onclick="shiftDay(-1)">◀</button>
-                    <button class="btn" style="padding:6px 8px;font-size:0.8em;min-width:0;" onclick="shiftDay(1)">▶</button>
-                </div>
-            </div>
-            <div class="control-group" style="flex:0;">
-                <label>&nbsp;</label>
-                <button class="btn" id="searchBtn" onclick="fetchAll()">조회</button>
             </div>
         </div>
 
@@ -181,7 +224,7 @@
         <!-- Tide Tab -->
         <div class="tab-content active" id="tab-tide">
             <div class="card" id="mulddaeCard" style="display:none;">
-                <div class="card-title">🌙 오늘의 물때 <span id="mulddaeDate" style="font-weight:400;color:var(--muted);font-size:0.9em;"></span></div>
+                <div class="card-title" style="flex-wrap:wrap;gap:6px;align-items:center;"><img id="moonPhaseIcon" src="moon/15.webp" alt="달" style="width:1.3em;height:1.3em;vertical-align:middle;border-radius:50%;"> 오늘의 물때 <span id="mulddaeDate" style="font-weight:600;color:var(--text);font-size:0.88em;"></span></div>
                 <div id="mulddaeInfo" class="mulddae-card"></div>
                 <div id="mulddaeSpeciesInfo" style="display:none;margin-top:10px;"></div>
             </div>
@@ -192,14 +235,17 @@
             <div class="card">
                 <div class="card-title" style="flex-wrap:wrap;gap:8px;">
                     <span>📈 조위 변화 그래프</span>
-                    <div class="species-btns" style="display:flex;gap:6px;margin-left:auto;">
-                        <button class="species-btn" data-species="none" onclick="toggleSpecies('none')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">어종 OFF</button>
-                        <button class="species-btn" data-species="jjukkumi" onclick="toggleSpecies('jjukkumi')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 쭈꾸미</button>
-                        <button class="species-btn" data-species="gapoh" onclick="toggleSpecies('gapoh')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🦑 갑오징어</button>
-                        <button class="species-btn" data-species="muneo" onclick="toggleSpecies('muneo')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 문어</button>
-                    </div>
+                    <span id="chartSunInfo" style="font-size:0.78em;font-weight:400;color:#ffb74d;display:none;"></span>
+                </div>
+                <div class="species-btns" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                    <button class="species-btn" data-species="none" onclick="toggleSpecies('none')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">어종 OFF</button>
+                    <button class="species-btn" data-species="jjukkumi" onclick="toggleSpecies('jjukkumi')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 쭈꾸미</button>
+                    <button class="species-btn" data-species="gapoh" onclick="toggleSpecies('gapoh')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🦑 갑오징어</button>
+                    <button class="species-btn" data-species="muneo" onclick="toggleSpecies('muneo')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 문어</button>
                 </div>
                 <div id="speciesLegend" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.8em;color:var(--muted);line-height:1.6;"></div>
+                <div id="tideLegend" style="display:none;margin-bottom:6px;font-size:0.75em;color:var(--muted);align-items:center;gap:10px;flex-wrap:wrap;"></div>
+                <div id="chartSlackInfo" style="display:none;font-size:0.65em;margin-bottom:4px;color:var(--muted);gap:4px;flex-wrap:wrap;align-items:center;letter-spacing:0.03em;"></div>
                 <div class="chart-container"><canvas id="tideChart"></canvas></div>
             </div>
         </div>
@@ -459,8 +505,14 @@
 
     const searchIndex = buildSearchIndex();
 
+    // HTML escape 유틸 — XSS 방지
+    function escapeHTML(str) {
+        if (typeof str !== 'string') return '';
+        return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
     function doSearch(query) {
-        const q = query.trim().toLowerCase();
+        const q = query.trim().toLowerCase().substring(0, 100);
         if (!q) return [];
         return searchIndex.filter(item =>
             item.name.toLowerCase().includes(q) ||
@@ -470,9 +522,11 @@
     }
 
     function highlightMatch(text, query) {
-        const idx = text.toLowerCase().indexOf(query.toLowerCase());
-        if (idx < 0) return text;
-        return text.substring(0, idx) + '<em>' + text.substring(idx, idx + query.length) + '</em>' + text.substring(idx + query.length);
+        const safe = escapeHTML(text);
+        const safeQ = escapeHTML(query);
+        const idx = safe.toLowerCase().indexOf(safeQ.toLowerCase());
+        if (idx < 0) return safe;
+        return safe.substring(0, idx) + '<em>' + safe.substring(idx, idx + safeQ.length) + '</em>' + safe.substring(idx + safeQ.length);
     }
 
     function renderSearchResults(results, query) {
@@ -524,11 +578,15 @@
                 currentSel.value = port.current;
             }
 
-            // 배너 표시
+            // 포트 정보 설정 (배너 숨기고 검색바에 표시)
             document.getElementById('portBannerName').textContent = port.name;
             document.getElementById('portBannerStation').textContent = `${port.stationName} (${port.station})`;
             document.getElementById('portBannerCurrent').textContent = port.current ? `${port.currentName} (${port.current})` : '예보점 없음';
-            document.getElementById('portBanner').style.display = '';
+            document.getElementById('portBanner').style.display = 'none';
+            // 검색바 내부 정보 표시
+            document.getElementById('searchPortStation').textContent = `${port.stationName} (${port.station})`;
+            document.getElementById('searchPortCurrent').textContent = port.current ? `${port.currentName} (${port.current})` : '예보점 없음';
+            document.getElementById('searchPortInfo').style.display = '';
 
             // 물때/조위 탭으로 전환
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -565,6 +623,7 @@
 
         // 배너 숨기기
         document.getElementById('portBanner').style.display = 'none';
+        document.getElementById('searchPortInfo').style.display = 'none';
 
         // 검색창 닫기
         document.getElementById('searchInput').value = item.name;
@@ -578,6 +637,8 @@
     document.addEventListener('DOMContentLoaded', () => {
         const today = new Date();
         document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+        updateDateDisplay();
+        document.getElementById('dateInput').addEventListener('change', () => { updateDateDisplay(); fetchAll(); });
 
         // 관측소/조류 연동 초기화
         buildStationSelect();
@@ -593,6 +654,7 @@
         // 포인트 배너 닫기 버튼
         document.getElementById('portBannerClose').addEventListener('click', () => {
             document.getElementById('portBanner').style.display = 'none';
+            document.getElementById('searchPortInfo').style.display = 'none';
         });
 
         // 탭 전환
@@ -643,6 +705,7 @@
                 const results = doSearch(q);
                 if (results.length > 0) {
                     selectSearchResult(results[0]);
+                    searchInput.blur();
                 }
             }
         });
@@ -663,11 +726,18 @@
         setTimeout(() => { toast.style.opacity = '0'; }, 2500);
     }
 
+    function updateDateDisplay() {
+        const v = document.getElementById('dateInput').value;
+        if (!v) return;
+        const [y, m, d] = v.split('-');
+        document.getElementById('dateDisplay').textContent = y + '년 ' + m + '월 ' + d + '일';
+    }
     function shiftMonth(dir) {
         const inp = document.getElementById('dateInput');
         const d = new Date(inp.value);
         d.setMonth(d.getMonth() + dir);
         inp.value = d.toISOString().split('T')[0];
+        updateDateDisplay();
         fetchAll();
     }
     function shiftDay(dir) {
@@ -675,9 +745,14 @@
         const d = new Date(inp.value);
         d.setDate(d.getDate() + dir);
         inp.value = d.toISOString().split('T')[0];
+        updateDateDisplay();
         fetchAll();
     }
-    function getDateStr() { return document.getElementById('dateInput').value.replace(/-/g, ''); }
+    function getDateStr() {
+        const v = document.getElementById('dateInput').value;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date().toISOString().split('T')[0].replace(/-/g, '');
+        return v.replace(/-/g, '');
+    }
     function getStation() { return document.getElementById('stationSelect').value; }
     function getCurrentStation() { return document.getElementById('currentSelect').value; }
 
@@ -734,7 +809,8 @@
             29: { name: '들물', num: '5물', color: '#4fc3f7', emoji: '🔵', pct: 80 },
             30: { name: '사리', num: '6물', color: '#ff6b6b', emoji: '🔴', pct: 90 },
         };
-        return mulddaeMap[lunarDay] || mulddaeMap[1];
+        const safeDay = (lunarDay >= 1 && lunarDay <= 30) ? lunarDay : 1;
+        return mulddaeMap[safeDay] || mulddaeMap[1];
     }
 
     // 관측소별 사리 기준 최대 조차 (cm) - 실측 기반 참고값
@@ -911,14 +987,22 @@
         if (params.obsCode) url.searchParams.set('obsCode', params.obsCode);
         if (params.reqDate) url.searchParams.set('reqDate', params.reqDate);
 
-        const resp = await fetch(url.toString());
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        let resp;
+        try {
+            resp = await fetch(url.toString(), { signal: controller.signal });
+        } finally { clearTimeout(timeoutId); }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const ct = resp.headers.get('content-type') || '';
+        if (!ct.includes('json')) throw new Error('잘못된 응답 형식');
         const json = await resp.json();
 
         if (json.header && json.header.resultCode !== '00') {
             throw new Error(json.header.resultMsg || 'API 오류');
         }
-        return json.body?.items?.item || [];
+        const items = json.body?.items?.item || [];
+        return Array.isArray(items) ? items : [items];
     }
 
     // ==================== FETCH ALL ====================
@@ -926,8 +1010,18 @@
         const btn = document.getElementById('searchBtn');
         btn.disabled = true; btn.textContent = '조회 중...';
         try {
-            await Promise.all([fetchTideHighLow(), fetchTidePrediction(), fetchCurrentData()]);
-        } catch(e) { console.error(e); }
+            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
+            await Promise.race([
+                Promise.all([fetchTideHighLow(), fetchTidePrediction(), fetchCurrentData()]),
+                timeout
+            ]);
+        } catch(e) {
+            console.error(e);
+            if (e.message === '요청 시간 초과') {
+                const summaryEl = document.getElementById('tideSummary');
+                if (summaryEl) summaryEl.innerHTML = '<div class="error-msg">요청 시간이 초과되었습니다. 다시 시도해주세요.</div>';
+            }
+        }
         finally { btn.disabled = false; btn.textContent = '조회'; }
     }
 
@@ -954,10 +1048,10 @@
             const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
             const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
 
-            const highs = displayItems.filter(i => parseInt(i.extrSe) % 2 === 1);
-            const lows = displayItems.filter(i => parseInt(i.extrSe) % 2 === 0);
+            const highs = displayItems.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
+            const lows = displayItems.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
 
-            const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => h.predcTdlvVl)) : null;
+            const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => parseFloat(h.predcTdlvVl))) : null;
             const minLow = lows.length > 0 ? Math.min(...lows.map(l => l.predcTdlvVl)) : null;
             const diff = (maxHigh !== null && minLow !== null) ? maxHigh - minLow : null;
 
@@ -973,7 +1067,9 @@
             const mulddaeEl = document.getElementById('mulddaeInfo');
             const mulddaeCard = document.getElementById('mulddaeCard');
             mulddaeCard.style.display = '';
-            document.getElementById('mulddaeDate').textContent = `${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)}`;
+            document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
+            const moonDay = mulddae.lunarDay <= 29 ? mulddae.lunarDay : 1;
+            document.getElementById('moonPhaseIcon').src = `moon/${String(moonDay).padStart(2,'0')}.webp`;
             const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
                 : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
                 : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
@@ -981,22 +1077,26 @@
                 : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
             const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
             mulddaeEl.innerHTML = `
-                <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
-                    <span class="mulddae-emoji">${mulddae.emoji}</span>
-                    <span class="mulddae-num">${mulddae.num}</span>
-                </div>
-                <div class="mulddae-detail">
-                    <div class="mulddae-title">${mulddae.name} · 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일</div>
-                    <div>물흐름 <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${mulddae.pct}%;background:${mulddae.color};"></div></div> <span style="color:${mulddae.color};font-weight:600;">${mulddae.pct}%</span>${realPct !== null ? ' <span style="font-size:0.75em;color:var(--muted);">(조차 ' + diff + 'cm 기준)</span>' : ''}</div>
-                    <div class="mulddae-desc">${desc}</div>
-                    <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-                        ${speciesFit.map(s => `<div style="display:flex;align-items:center;gap:5px;padding:4px 10px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:8px;font-size:0.82em;">
-                            <span>${s.emoji}</span>
-                            <span style="color:var(--text);font-weight:600;">${s.name}</span>
-                            <span style="color:${s.color};font-weight:700;">${s.grade}</span>
-                            <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
-                        </div>`).join('')}
+                <div class="mulddae-row1">
+                    <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
+                        <span class="mulddae-emoji">${mulddae.emoji}</span>
+                        <span class="mulddae-num">${mulddae.num}</span>
                     </div>
+                    <div class="mulddae-pct-wrap">
+                        <span style="color:var(--muted);font-size:0.85em;">물흐름</span>
+                        <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${mulddae.pct}%;background:${mulddae.color};"></div></div>
+                        <span style="color:${mulddae.color};font-weight:600;font-size:0.9em;">${mulddae.pct}%</span>
+                        ${realPct !== null ? '<span style="font-size:0.7em;color:var(--muted);">(조차 ' + diff + 'cm)</span>' : ''}
+                    </div>
+                </div>
+                <div class="mulddae-desc">${desc}</div>
+                <div class="mulddae-species">
+                    ${speciesFit.map(s => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
+                        <span>${s.emoji}</span>
+                        <span style="color:var(--text);font-weight:600;">${s.name}</span>
+                        <span style="color:${s.color};font-weight:700;">${s.grade}</span>
+                        <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
+                    </div>`).join('')}
                 </div>`;
 
             // 낚시 시간대 필터: 18:00~05:00 (야간) 고저조 전부 제외
@@ -1029,7 +1129,7 @@
 
             window._hlData = displayItems;
         } catch(e) {
-            summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${e.message}</div>`;
+            summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${escapeHTML(e.message)}</div>`;
         }
     }
 
@@ -1093,36 +1193,33 @@
             }
 
             const hlData = window._hlData || [];
-            let labels, predicted, actual;
+            let labels = [], predicted = [], actual = null;
 
-            if (items && items.length > 0) {
-                // 실측 데이터 있음 (과거/오늘)
-                labels = items.map(d => d.obsrvnDt.substring(11, 16));
-                predicted = items.map(d => d.bscTdlvHgt);
-                actual = items.map(d => d.tdlvHgt);
-
-                // 오늘: 실측이 18:00 미만이면 고저조 보간으로 나머지 예측 채움
-                const lastLabel = labels[labels.length - 1];
-                if (lastLabel && lastLabel < '18:00' && hlData.length >= 2) {
-                    const interp = interpolateFromHiLo(hlData);
-                    const lastMin = (() => { const [h,m] = lastLabel.split(':').map(Number); return h * 60 + m; })();
-                    for (let i = 0; i < interp.labels.length; i++) {
-                        const [ih, im] = interp.labels[i].split(':').map(Number);
-                        const iMin = ih * 60 + im;
-                        if (iMin > lastMin) {
-                            labels.push(interp.labels[i]);
-                            predicted.push(interp.predicted[i]);
-                            actual.push(null); // 실측 없음
-                        }
-                    }
-                }
-            } else if (hlData.length >= 2) {
-                // 실측 없음, 고저조 예보로 보간 곡선 생성 (미래)
+            // 예측조위: 항상 고저조 보간으로 05:00~18:00 전체 곡선 생성
+            if (hlData.length >= 2) {
                 const interp = interpolateFromHiLo(hlData);
                 labels = interp.labels;
                 predicted = interp.predicted;
-                actual = null;
+            }
+
+            if (items && items.length > 0 && labels.length > 0) {
+                // 실측조위: API 실측값을 보간 라벨에 매핑
+                const actualMap = {};
+                items.forEach(d => {
+                    const t = d.obsrvnDt.substring(11, 16);
+                    actualMap[t] = d.tdlvHgt;
+                });
+                actual = labels.map(lbl => actualMap[lbl] != null ? actualMap[lbl] : null);
+            } else if (items && items.length > 0 && labels.length === 0) {
+                // 고저조 없고 실측만 있는 경우 (fallback)
+                labels = items.map(d => d.obsrvnDt.substring(11, 16));
+                predicted = items.map(d => d.bscTdlvHgt);
+                actual = items.map(d => d.tdlvHgt);
             } else {
+                actual = null;
+            }
+
+            if (!labels || labels.length === 0) {
                 renderTideChart([], []); return;
             }
 
@@ -1131,8 +1228,18 @@
             const filterIndices = labels.map((l, i) => timeFilter(l) ? i : -1).filter(i => i >= 0);
             const fLabels = filterIndices.map(i => labels[i]);
             const fPredicted = filterIndices.map(i => predicted[i]);
-            const fActual = actual ? filterIndices.map(i => actual[i]) : null;
+            let fActual = actual ? filterIndices.map(i => actual[i]) : null;
+            // 실측 데이터 끝부분의 null 제거 (tension 곡선 튀김 방지)
+            if (fActual) {
+                let lastValid = fActual.length - 1;
+                while (lastValid >= 0 && fActual[lastValid] == null) lastValid--;
+                if (lastValid < fActual.length - 1 && lastValid >= 0) {
+                    fActual = fActual.slice(0, lastValid + 1);
+                }
+            }
 
+            const _fValid = fPredicted.filter(v => v != null);
+            const _dataMin = _fValid.length > 0 ? Math.min(..._fValid) : 0;
             let annotations = {};
             hlData.forEach((item, idx) => {
                 const time = item.predcDt.substring(11, 16);
@@ -1156,20 +1263,33 @@
                     content: `${isHigh ? '고조' : '저조'} ${item.predcTdlvVl.toFixed(0)}cm`,
                     color: isHigh ? '#ff6b6b' : '#4ecdc4',
                     font: { size: 11, weight: 'bold' },
+                    z: 10,
                 };
                 annotations['hl_time_' + idx] = {
                     type: 'label', xValue: nearIdx,
-                    yValue: item.predcTdlvVl,
-                    yAdjust: isHigh ? -21 : 18,
+                    yValue: isHigh ? item.predcTdlvVl : _dataMin,
+                    yAdjust: isHigh ? -21 : 24,
                     content: time,
                     color: isHigh ? '#ff6b6b' : '#4ecdc4',
                     font: { size: 10, weight: '600' },
+                    z: 10,
                 };
             });
 
             // 일출/일몰 그래프 마커
             const sunTimes = getSunTimesForStation(getDateStr(), getStation());
-            [
+            const isMobile = window.innerWidth <= 600;
+            const chartSunEl = document.getElementById('chartSunInfo');
+            if (isMobile && chartSunEl) {
+                const parts = [];
+                if (sunTimes.sunrise) parts.push('일출 ' + sunTimes.sunrise);
+                if (sunTimes.sunset) parts.push('일몰 ' + sunTimes.sunset);
+                chartSunEl.textContent = parts.join(' | ');
+                chartSunEl.style.display = parts.length ? '' : 'none';
+            } else if (chartSunEl) {
+                chartSunEl.style.display = 'none';
+            }
+            if (!isMobile) [
                 { key: 'sunrise', time: sunTimes.sunrise, emoji: '🌅', label: '일출', color: '#ffb74d' },
                 { key: 'sunset',  time: sunTimes.sunset,  emoji: '🌇', label: '일몰', color: '#ff8a65' }
             ].forEach(sun => {
@@ -1189,7 +1309,7 @@
                 annotations['sun_label_' + sun.key] = {
                     type: 'label', xValue: sunIdx, yValue: sunY,
                     yAdjust: -20,
-                    content: sun.emoji + ' ' + sun.time,
+                    content: sun.label + ' ' + sun.time,
                     color: sun.color, font: { size: 10, weight: 'bold' },
                 };
             });
@@ -1357,7 +1477,7 @@
         updateMulddaeSpeciesInfo();
 
         // 차트 다시 그리기
-        if (window._chartData) {
+        if (window._chartData && window._chartData.labels && window._chartData.labels.length > 0) {
             const { labels, predicted, actual, annotations } = window._chartData;
             renderTideChart(labels, predicted, actual, annotations);
         }
@@ -1400,27 +1520,27 @@
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
                 <span style="color:${cfg.color};font-weight:700;font-size:0.95em;">${cfg.legend}</span>
             </div>
-            <div style="display:flex;gap:12px;flex-wrap:wrap;">
-                ${slackZones.length > 0 ? `
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span style="font-size:0.82em;color:#ff5252;font-weight:700;">⏸ 정조 구간</span>
-                    ${slackZones.map(z => `
-                        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(255,82,82,0.08);border-radius:6px;border-left:3px solid #ff5252;">
-                            <span style="font-size:0.85em;color:var(--text);font-weight:600;">${z.start}~${z.end}</span>
-                        </div>
-                    `).join('')}
-                </div>` : ''}
-                ${turnTimes.length > 0 ? `
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                    <span style="font-size:0.82em;color:#4caf50;font-weight:700;">🟢 물돌이</span>
-                    ${turnTimes.map(t => `
-                        <div style="display:inline-flex;align-items:center;gap:5px;padding:3px 10px;background:rgba(76,175,80,0.1);border-radius:6px;border-left:3px solid #4caf50;">
-                            <span style="font-size:0.85em;color:var(--text);font-weight:600;">${t.time}</span>
-                            <span style="font-size:0.72em;color:${t.type === '들물' ? '#4fc3f7' : '#ff8a65'};font-weight:600;">→${t.type}</span>
-                        </div>
-                    `).join('')}
-                </div>` : ''}
-            </div>`;
+            ${slackZones.length > 0 ? `
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                <span style="font-size:0.82em;color:#ff5252;font-weight:700;min-width:72px;">⏸ 정조 구간</span>
+                <span style="font-size:0.78em;color:var(--muted);">|</span>
+                ${slackZones.map(z => `
+                    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:3px 10px;background:rgba(255,82,82,0.08);border-radius:6px;border-left:3px solid #ff5252;">
+                        <span style="font-size:0.85em;color:var(--text);font-weight:600;">${z.start}~${z.end}</span>
+                    </div>
+                `).join('')}
+            </div>` : ''}
+            ${turnTimes.length > 0 ? `
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+                <span style="font-size:0.82em;color:#4caf50;font-weight:700;min-width:72px;">🟢 물돌이</span>
+                <span style="font-size:0.78em;color:var(--muted);">|</span>
+                ${turnTimes.map(t => `
+                    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:3px 10px;background:rgba(76,175,80,0.1);border-radius:6px;border-left:3px solid #4caf50;">
+                        <span style="font-size:0.85em;color:var(--text);font-weight:600;">${t.time}</span>
+                        <span style="font-size:0.72em;color:${t.type === '들물' ? '#4fc3f7' : '#ff8a65'};font-weight:600;">→${t.type}</span>
+                    </div>
+                `).join('')}
+            </div>` : ''}`;
     }
 
     // 물때 카드에 선택된 어종의 물때 기반 설명 표시
@@ -1477,9 +1597,15 @@
     }
 
     function renderTideChart(labels, predicted, actual, baseAnnotations = {}) {
+        window._zoneData = []; // 매 렌더링마다 초기화
         const annotations = { ...baseAnnotations };
-        const ctx = document.getElementById('tideChart').getContext('2d');
+        const canvasEl = document.getElementById('tideChart');
+        if (!canvasEl) return;
+        const ctx = canvasEl.getContext('2d');
         if (tideChart) tideChart.destroy();
+        // 갑오징어가 아니면 모바일 정조/물돌이 텍스트 숨기기
+        const _slackEl = document.getElementById('chartSlackInfo');
+        if (_slackEl && activeSpecies !== 'gapoh') { _slackEl.style.display = 'none'; _slackEl.innerHTML = ''; }
         if (labels.length === 0) { tideChart = null; return; }
 
         const grad1 = ctx.createLinearGradient(0, 0, 0, 320);
@@ -1491,7 +1617,8 @@
             data: predicted,
             borderColor: '#4fc3f7',
             backgroundColor: grad1,
-            borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+            borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 5,
+            order: 0,
         }];
 
         if (actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i])) {
@@ -1500,7 +1627,8 @@
                 data: actual,
                 borderColor: '#ffa726',
                 borderWidth: 1.5, borderDash: [4, 4],
-                fill: false, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+                fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 5,
+                order: 1, spanGaps: false,
             });
         }
 
@@ -1509,9 +1637,10 @@
             y: { grace: '8%', ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' }, grid: { color: 'rgba(255,255,255,0.06)' } }
         };
 
-        if (activeSpecies === 'gapoh' && predicted.length > 0) {
-            const yMax = Math.max(...predicted.filter(v => v != null));
-            const yMin = Math.min(...predicted.filter(v => v != null));
+        const _pValid = predicted.filter(v => v != null);
+        if (activeSpecies === 'gapoh' && _pValid.length > 0) {
+            const yMax = Math.max(..._pValid);
+            const yMin = Math.min(..._pValid);
             const yCenter = (yMax + yMin) / 2;
             // 기존 고조/저조 annotation(hl_) 위치를 그대로 사용
             const hlPoints = [];
@@ -1523,50 +1652,140 @@
             hlPoints.sort((a, b) => a - b);
 
             // 각 고조/저조 중심으로 정조(1h) + 물돌이(1h) 배치
+            const rates = calcTideRates(predicted);
+            const isMob = window.innerWidth <= 600;
+            const mobSlackTexts = [];
+            const mobTurnTexts = [];
             hlPoints.forEach((center, zc) => {
                 const redStart = Math.max(0, center - SLACK_HALF);
                 const redEnd = Math.min(labels.length - 1, center + SLACK_HALF);
                 const turnStart = redEnd;
                 const turnEnd = Math.min(labels.length - 1, redEnd + TURN_LEN);
 
-                annotations['slack_zone_' + zc] = {
-                    type: 'box', xMin: redStart, xMax: redEnd,
-                    backgroundColor: 'rgba(255,82,82,0.07)',
-                    borderColor: 'rgba(255,82,82,0.25)',
-                    borderWidth: 1, borderDash: [3, 3],
-                };
-                annotations['slack_label_' + zc] = {
-                    type: 'label', xValue: (redStart + redEnd) / 2, yValue: yCenter,
-                    content: ['⏸ 정조', labels[redStart] || '', '~', labels[redEnd] || ''], color: '#ff5252',
-                    font: { size: 10, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 3, bottom: 3, left: 6, right: 6 }, borderRadius: 4,
-                };
-                annotations['turn_zone_' + zc] = {
-                    type: 'box', xMin: turnStart, xMax: turnEnd,
-                    backgroundColor: 'rgba(76,175,80,0.08)',
-                    borderColor: 'rgba(76,175,80,0.3)',
-                    borderWidth: 1, borderDash: [3, 3],
-                };
-                annotations['turn_label_' + zc] = {
-                    type: 'label', xValue: (turnStart + turnEnd) / 2, yValue: yCenter,
-                    content: ['🟢 물돌이', labels[turnStart] || '', '~', labels[turnEnd] || ''], color: '#4caf50',
-                    font: { size: 10, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 3, bottom: 3, left: 6, right: 6 }, borderRadius: 4,
-                };
+                // zone 데이터 저장 (커스텀 플러그인에서 그래프 안쪽만 채움)
+                window._zoneData.push(
+                    { start: redStart, end: redEnd, color: 'rgba(255,105,97,0.35)', border: null },
+                    { start: turnStart, end: turnEnd, color: 'rgba(100,255,218,0.35)', border: null }
+                );
+                if (isMob) {
+                    mobSlackTexts.push((labels[redStart] || '') + '~' + (labels[redEnd] || ''));
+                    const turnRate = rates[redEnd] != null ? rates[redEnd] : 0;
+                    mobTurnTexts.push((labels[redEnd] || '') + '→' + (turnRate > 0 ? '들물' : '날물'));
+                } else {
+                    annotations['slack_label_' + zc] = {
+                        type: 'label', xValue: (redStart + redEnd) / 2, yValue: yCenter,
+                        content: ['⏸ 정조', labels[redStart] || '', '~', labels[redEnd] || ''], color: '#ff6961',
+                        font: { size: 10, weight: 'bold' },
+                        backgroundColor: 'rgba(17,29,53,0.85)',
+                        padding: { top: 3, bottom: 3, left: 6, right: 6 }, borderRadius: 4,
+                    };
+                    annotations['turn_label_' + zc] = {
+                        type: 'label', xValue: (turnStart + turnEnd) / 2, yValue: yCenter,
+                        content: ['🟢 물돌이', labels[turnStart] || '', '~', labels[turnEnd] || ''], color: '#64ffda',
+                        font: { size: 10, weight: 'bold' },
+                        backgroundColor: 'rgba(17,29,53,0.85)',
+                        padding: { top: 3, bottom: 3, left: 6, right: 6 }, borderRadius: 4,
+                    };
+                }
             });
+            // 모바일: 그래프 위에 정조/물돌이 시간 표시
+            const slackInfoEl = document.getElementById('chartSlackInfo');
+            if (slackInfoEl) {
+                if (isMob && mobSlackTexts.length > 0) {
+                    slackInfoEl.style.display = 'flex';
+                    slackInfoEl.innerHTML =
+                        '<span style="padding:1px 5px;background:rgba(255,105,97,0.12);border:1px solid rgba(255,105,97,0.3);border-radius:3px;"><span style="color:#ff6961;font-weight:700;">⏸ 정조</span> ' + mobSlackTexts.map(escapeHTML).join(' · ') + '</span>' +
+                        '<span style="padding:1px 5px;background:rgba(100,255,218,0.10);border:1px solid rgba(100,255,218,0.25);border-radius:3px;"><span style="color:#64ffda;font-weight:700;">🟢 물돌이</span> ' + mobTurnTexts.map(escapeHTML).join(' · ') + '</span>';
+                } else {
+                    slackInfoEl.style.display = 'none';
+                    slackInfoEl.innerHTML = '';
+                }
+            }
         }
+
+        // 현재 시간 마커 (오늘 날짜 + 05:00~18:00 범위 내)
+        const _today = new Date();
+        const _selDate = document.getElementById('dateInput').value;
+        const _todayStr = _today.getFullYear() + '-' + String(_today.getMonth()+1).padStart(2,'0') + '-' + String(_today.getDate()).padStart(2,'0');
+        if (_selDate === _todayStr && labels.length > 0) {
+            const nowH = _today.getHours(), nowM = _today.getMinutes();
+            const nowTotal = nowH * 60 + nowM;
+            // 10분 단위로 스냅
+            const snapped = Math.round(nowTotal / 10) * 10;
+            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
+            const snapMM = String(snapped % 60).padStart(2, '0');
+            const nowLabel = snapHH + ':' + snapMM;
+            const nowIdx = labels.indexOf(nowLabel);
+            if (nowIdx >= 0) {
+                const nowY = predicted[nowIdx] != null ? predicted[nowIdx] : 0;
+                annotations['now_point'] = {
+                    type: 'point', xValue: nowIdx, yValue: nowY,
+                    backgroundColor: 'rgba(255,235,59,0.9)',
+                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
+                };
+                const _yMin = _pValid.length > 0 ? Math.min(..._pValid) : 0;
+                annotations['now_label'] = {
+                    type: 'label', xValue: nowIdx, yValue: _yMin,
+                    xAdjust: 0, yAdjust: 24,
+                    content: nowLabel,
+                    color: '#ffeb3b',
+                    font: { size: 10, weight: 'bold' },
+                };
+                // 수직 점선 (포인트까지만)
+                annotations['now_line'] = {
+                    type: 'line', xMin: nowIdx, xMax: nowIdx,
+                    yMax: nowY,
+                    borderColor: 'rgba(255,235,59,0.4)',
+                    borderWidth: 1, borderDash: [4, 4],
+                };
+            }
+        }
+
+        // 커스텀 플러그인: 정조/물돌이 구간을 그래프 곡선 안쪽만 채움
+        const zoneFillPlugin = {
+            id: 'zoneFill',
+            beforeDatasetsDraw(chart) {
+                if (!window._zoneData || window._zoneData.length === 0) return;
+                const { ctx: c, chartArea, scales: { x: xScale, y: yScale } } = chart;
+                const meta = chart.getDatasetMeta(0); // predicted 데이터셋
+                if (!meta || !meta.data || meta.data.length === 0) return;
+                c.save();
+                // chartArea 밖 클립
+                c.beginPath();
+                c.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
+                c.clip();
+                window._zoneData.forEach(zone => {
+                    const startIdx = Math.max(0, Math.floor(zone.start));
+                    const endIdx = Math.min(meta.data.length - 1, Math.ceil(zone.end));
+                    if (startIdx >= endIdx) return;
+                    // fill: 그래프 선 아래 → x축까지
+                    c.beginPath();
+                    const firstPt = meta.data[startIdx];
+                    c.moveTo(firstPt.x, chartArea.bottom);
+                    for (let i = startIdx; i <= endIdx; i++) {
+                        const pt = meta.data[i];
+                        if (pt) c.lineTo(pt.x, pt.y);
+                    }
+                    const lastPt = meta.data[endIdx];
+                    c.lineTo(lastPt.x, chartArea.bottom);
+                    c.closePath();
+                    c.fillStyle = zone.color;
+                    c.fill();
+                });
+                c.restore();
+            }
+        };
 
         tideChart = new Chart(ctx, {
             type: 'line',
             data: { labels, datasets },
+            plugins: [zoneFillPlugin],
             options: {
                 responsive: true, maintainAspectRatio: false,
-                layout: { padding: { right: 15 } },
+                layout: { padding: { right: 15, bottom: 20 } },
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
-                    legend: { display: datasets.length > 1, labels: { color: '#7a8ba3', font: { size: 11 } } },
+                    legend: { display: false },
                     tooltip: {
                         backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#4fc3f7',
                         bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
@@ -1574,16 +1793,85 @@
                             label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} cm`
                         }
                     },
-                    annotation: { clip: false, annotations }
+                    annotation: { clip: false, drawTime: 'afterDraw', annotations }
                 },
                 scales
             }
         });
 
+        // 커스텀 범례 업데이트
+        const tideLegendEl = document.getElementById('tideLegend');
+        if (tideLegendEl) {
+            const hasActual = actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i]);
+            const hasNow = !!annotations['now_point'];
+            let html = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
+            if (hasActual) {
+                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:0;border-top:2px dashed #ffa726;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
+            }
+            if (hasNow) {
+                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
+            }
+            tideLegendEl.innerHTML = html;
+            tideLegendEl.style.display = 'flex';
+        }
+
         // 시간대 정보 업데이트 (차트 위 speciesLegend)
         updateSpeciesTimeRanges();
         updateMulddaeSpeciesInfo();
     }
+
+    // ==================== 현재 시간 마커 10분 자동 갱신 ====================
+    let _nowMarkerTimer = null;
+    function startNowMarkerTimer() {
+        if (_nowMarkerTimer) clearInterval(_nowMarkerTimer);
+        _nowMarkerTimer = setInterval(() => {
+            if (!tideChart || !window._chartData) return;
+            const cd = window._chartData;
+            const now = new Date();
+            const selDate = document.getElementById('dateInput').value;
+            const todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+            if (selDate !== todayStr) return;
+
+            const nowTotal = now.getHours() * 60 + now.getMinutes();
+            const snapped = Math.round(nowTotal / 10) * 10;
+            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
+            const snapMM = String(snapped % 60).padStart(2, '0');
+            const nowLabel = snapHH + ':' + snapMM;
+            const nowIdx = cd.labels.indexOf(nowLabel);
+
+            const ann = tideChart.options.plugins.annotation.annotations;
+            // 이전 마커 제거
+            delete ann['now_point'];
+            delete ann['now_label'];
+            delete ann['now_line'];
+
+            if (nowIdx >= 0) {
+                const nowY = cd.predicted[nowIdx] != null ? cd.predicted[nowIdx] : 0;
+                ann['now_point'] = {
+                    type: 'point', xValue: nowIdx, yValue: nowY,
+                    backgroundColor: 'rgba(255,235,59,0.9)',
+                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
+                };
+                const _filteredT = cd.predicted.filter(v => v != null);
+                const _yMinT = _filteredT.length > 0 ? Math.min(..._filteredT) : 0;
+                ann['now_label'] = {
+                    type: 'label', xValue: nowIdx, yValue: _yMinT,
+                    xAdjust: 0, yAdjust: 24,
+                    content: nowLabel,
+                    color: '#ffeb3b',
+                    font: { size: 10, weight: 'bold' },
+                };
+                ann['now_line'] = {
+                    type: 'line', xMin: nowIdx, xMax: nowIdx,
+                    yMax: nowY,
+                    borderColor: 'rgba(255,235,59,0.4)',
+                    borderWidth: 1, borderDash: [4, 4],
+                };
+            }
+            tideChart.update('none'); // 애니메이션 없이 갱신
+        }, 10 * 60 * 1000); // 10분
+    }
+    startNowMarkerTimer();
 
     // ==================== 3) 조류 (crntFcstTime 시계열) ====================
     async function fetchCurrentData() {
@@ -1613,7 +1901,7 @@
             renderCurrentTable(filtered, infoEl);
             renderCurrentChart(filtered);
         } catch(e) {
-            infoEl.innerHTML = `<div class="error-msg">조류 오류: ${e.message}</div>`;
+            infoEl.innerHTML = `<div class="error-msg">조류 오류: ${escapeHTML(e.message)}</div>`;
             renderCurrentChart([]);
         }
     }
@@ -1627,11 +1915,13 @@
     }
 
     function renderCurrentTable(items, el) {
-        const maxSpeed = Math.max(...items.map(i => parseFloat(i.crsp) || 0), 1);
+        if (!items || items.length === 0) return;
+        const speeds = items.map(i => parseFloat(i.crsp) || 0);
+        const maxSpeed = speeds.length > 0 ? Math.max(...speeds, 1) : 1;
 
         el.innerHTML = `
             <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
-                예보점: <strong style="color:var(--text)">${items[0]?.obsvtrNm || '-'}</strong> ·
+                예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong> ·
                 총 ${items.length}건 (10분 간격)
             </div>
             <div style="max-height:400px;overflow-y:auto;">
@@ -1645,7 +1935,7 @@
                         const color = getSpeedColor(speed);
                         return `<tr>
                             <td>${time}</td>
-                            <td style="color:${color};">${item.crdir || '-'}</td>
+                            <td style="color:${color};">${escapeHTML(item.crdir || '-')}</td>
                             <td>${speed.toFixed(1)}</td>
                             <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
                         </tr>`;
@@ -1656,7 +1946,9 @@
     }
 
     function renderCurrentChart(items) {
-        const ctx = document.getElementById('currentChart').getContext('2d');
+        const canvasEl = document.getElementById('currentChart');
+        if (!canvasEl) return;
+        const ctx = canvasEl.getContext('2d');
         if (currentChart) currentChart.destroy();
         if (!items || items.length === 0) { currentChart = null; return; }
 
