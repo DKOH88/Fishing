@@ -1293,6 +1293,7 @@
 
             // 일출/일몰 그래프 마커
             const sunTimes = getSunTimesForStation(getDateStr(), getStation());
+            window._sunTimes = sunTimes;
             const isMobile = window.innerWidth <= 600;
             const chartSunEl = document.getElementById('chartSunInfo');
             if (isMobile && chartSunEl) {
@@ -1304,30 +1305,23 @@
             } else if (chartSunEl) {
                 chartSunEl.style.display = 'none';
             }
-            if (!isMobile) [
-                { key: 'sunrise', time: sunTimes.sunrise, emoji: '🌅', label: '일출', color: '#ffb74d' },
-                { key: 'sunset',  time: sunTimes.sunset,  emoji: '🌇', label: '일몰', color: '#ff8a65' }
-            ].forEach(sun => {
-                if (!sun.time) return;
-                const sunIdx = fLabels.findIndex(l => {
+            // 일출 포인트: 현재 위치 마커와 유사하게 표시(오렌지, 더 작은 크기)
+            if (sunTimes.sunrise) {
+                const sunriseIdx = fLabels.findIndex(l => {
                     const [h1, m1] = l.split(':').map(Number);
-                    const [h2, m2] = sun.time.split(':').map(Number);
+                    const [h2, m2] = sunTimes.sunrise.split(':').map(Number);
                     return Math.abs((h1 * 60 + m1) - (h2 * 60 + m2)) <= 5;
                 });
-                if (sunIdx < 0) return;
-                const sunY = fPredicted[sunIdx] != null ? fPredicted[sunIdx] : 0;
-                annotations['sun_point_' + sun.key] = {
-                    type: 'point', xValue: sunIdx, yValue: sunY,
-                    backgroundColor: 'rgba(255,183,77,0.8)',
-                    radius: 7, borderColor: '#fff', borderWidth: 2,
-                };
-                annotations['sun_label_' + sun.key] = {
-                    type: 'label', xValue: sunIdx, yValue: sunY,
-                    yAdjust: -20,
-                    content: sun.label + ' ' + sun.time,
-                    color: sun.color, font: { size: 10, weight: 'bold' },
-                };
-            });
+                if (sunriseIdx >= 0) {
+                    const sunriseY = fPredicted[sunriseIdx] != null ? fPredicted[sunriseIdx] : 0;
+                    annotations['sunrise_point'] = {
+                        type: 'point', xValue: sunriseIdx, yValue: sunriseY,
+                        backgroundColor: 'rgba(255,183,77,0.95)',
+                        radius: 4, borderColor: '#fff', borderWidth: 1.5,
+                        z: 11,
+                    };
+                }
+            }
 
             // 활성도 데이터 저장 (어종 버튼용)
             window._chartData = { labels: fLabels, predicted: fPredicted, actual: fActual, annotations };
@@ -1817,13 +1811,7 @@
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#4fc3f7',
-                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
-                        callbacks: {
-                            label: c => `${c.dataset.label}: ${c.parsed.y.toFixed(1)} cm`
-                        }
-                    },
+                    tooltip: { enabled: false },
                     annotation: { clip: false, drawTime: 'afterDraw', annotations }
                 },
                 scales
@@ -1835,9 +1823,15 @@
         if (tideLegendEl) {
             const hasActual = actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i]);
             const hasNow = !!annotations['now_point'];
+            const sunriseAnn = annotations['sunrise_point'];
+            const hasSunrise = !!(sunriseAnn && sunriseAnn.xValue != null);
+            const sunriseTime = (window._sunTimes && window._sunTimes.sunrise) ? window._sunTimes.sunrise : null;
             let html = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
             if (hasActual) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:0;border-top:2px dashed #ffa726;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
+            }
+            if (hasSunrise) {
+                html += `<span style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#ffb74d;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffb74d;">일출 ${sunriseTime}</span></span>`;
             }
             if (hasNow) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
