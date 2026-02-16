@@ -1008,7 +1008,7 @@
     // ==================== FETCH ALL ====================
     async function fetchAll() {
         const btn = document.getElementById('searchBtn');
-        btn.disabled = true; btn.textContent = '조회 중...';
+        btn.disabled = true;
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
             await Promise.race([
@@ -2010,5 +2010,6 @@
     </script>
 </body>
 </html>
+
 
 
