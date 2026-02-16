@@ -1639,6 +1639,7 @@
         const _yAll = _pValid.concat(_annYValues);
 
         const yScale = {
+            min: 0,
             ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
             grid: { color: 'rgba(255,255,255,0.06)' }
         };
@@ -1647,7 +1648,6 @@
             const _yMaxAuto = Math.max(..._yAll);
             const _yRange = Math.max(1, _yMaxAuto - _yMinAuto);
             const _yPad = Math.max(20, _yRange * 0.12);
-            yScale.min = _yMinAuto - _yPad;
             yScale.max = _yMaxAuto + _yPad;
         } else {
             yScale.grace = '12%';
@@ -2010,6 +2010,7 @@
     </script>
 </body>
 </html>
+
 
 
 
