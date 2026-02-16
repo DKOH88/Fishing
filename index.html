@@ -425,6 +425,7 @@
         { name: '장호항', lat: 37.28, lon: 129.33, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
         { name: '임원항', lat: 37.25, lon: 129.35, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
     ];
+    window._selectedPort = null;
 
     // ==================== 관측소/조류 연동 ====================
     function getRegionByStationCode(code) {
@@ -485,6 +486,9 @@
         const region = getRegionByStationCode(code);
         buildCurrentSelect(region);
         updateRegionBadges(region);
+        requestFlowStatsPrime(code, getDateStr(), false);
+        const currentCode = getCurrentStation();
+        requestCurrentFlowStatsPrime(currentCode, getDateStr(), false);
     }
 
     // ==================== 검색 기능 ====================
@@ -579,6 +583,7 @@
             if (port.current) {
                 currentSel.value = port.current;
             }
+            window._selectedPort = port;
 
             // 포트 정보 설정 (배너 숨기고 검색바에 표시)
             document.getElementById('portBannerName').textContent = port.name;
@@ -622,6 +627,7 @@
         if (item.type === 'crnt') {
             currentSel.value = item.code;
         }
+        window._selectedPort = null;
 
         // 배너 숨기기
         document.getElementById('portBanner').style.display = 'none';
@@ -861,12 +867,324 @@
         'DT_0042': 300, 'IE_0060': 200, 'IE_0061': 350, 'IE_0062': 800,
     };
 
-    // 실제 조차 기반 물흐름 % 계산
-    function calcFlowPct(diff, stationCode) {
+    // ==================== 물흐름 동적 정규화 (관측소별 p10/p90) ====================
+    const FLOW_STATS_CACHE_PREFIX = 'flowStats.v2.';
+    const FLOW_STATS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7일
+    const FLOW_STATS_LOOKBACK_DAYS = 180;
+    const FLOW_STATS_STEP_DAYS = 5; // tide-hilo 응답이 며칠치 묶음이라 5일 간격 수집
+    const FLOW_STATS_MIN_SAMPLES = 24;
+    const FLOW_STATS_FETCH_CONCURRENCY = 4;
+    const flowStatsMemoryCache = {};
+    const flowStatsInFlight = {};
+
+    function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+    }
+
+    function formatDateKey(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+    }
+
+    function formatReqDate(dateObj) {
+        const y = dateObj.getFullYear();
+        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dateObj.getDate()).padStart(2, '0');
+        return `${y}${m}${d}`;
+    }
+
+    function parseReqDate(reqDate) {
+        if (!/^\d{8}$/.test(reqDate || '')) return null;
+        const y = parseInt(reqDate.substring(0, 4), 10);
+        const m = parseInt(reqDate.substring(4, 6), 10);
+        const d = parseInt(reqDate.substring(6, 8), 10);
+        const dt = new Date(y, m - 1, d);
+        return Number.isNaN(dt.getTime()) ? null : dt;
+    }
+
+    function addDays(dateObj, days) {
+        const d = new Date(dateObj);
+        d.setDate(d.getDate() + days);
+        return d;
+    }
+
+    function startOfDay(dateObj) {
+        const d = new Date(dateObj);
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
+
+    function getDaysAheadFromToday(dateStr) {
+        const target = parseReqDate(dateStr);
+        if (!target) return null;
+        const today = startOfDay(new Date());
+        const targetDay = startOfDay(target);
+        return Math.round((targetDay.getTime() - today.getTime()) / 86400000);
+    }
+
+    const FLOW_WEIGHT_PROFILE_DEFAULT = { midStart: 0.35, midEnd: 0.70, near: 0.85 };
+    const FLOW_WEIGHT_PROFILE_BY_STATION = {
+        // 오천권(보령) 백테스트(2026, badatime 355) 기반 보정
+        // 겨울: 유속 반영 낮게, 여름: 유속 반영 높게
+        'DT_0025': {
+            cold: { midStart: 0.15, midEnd: 0.30, near: 0.35 },     // 11~4월
+            shoulder: { midStart: 0.30, midEnd: 0.50, near: 0.55 }, // 5,10월
+            warm: { midStart: 0.45, midEnd: 0.72, near: 0.80 },     // 6~9월
+        },
+    };
+
+    function getFlowSeason(dateStr) {
+        if (!/^\d{8}$/.test(dateStr || '')) return 'shoulder';
+        const month = parseInt(dateStr.substring(4, 6), 10);
+        if ([11, 12, 1, 2, 3, 4].includes(month)) return 'cold';
+        if ([6, 7, 8, 9].includes(month)) return 'warm';
+        return 'shoulder';
+    }
+
+    function getFlowWeightProfile(dateStr, stationCode) {
+        const season = getFlowSeason(dateStr);
+        const byStation = stationCode ? FLOW_WEIGHT_PROFILE_BY_STATION[stationCode] : null;
+        const profile = (byStation && byStation[season]) ? byStation[season] : FLOW_WEIGHT_PROFILE_DEFAULT;
+        const midStart = clamp(Number(profile.midStart), 0, 1);
+        const midEnd = clamp(Number(profile.midEnd), 0, 1);
+        const near = clamp(Number(profile.near), 0, 1);
+        return { season, midStart, midEnd, near, tuned: !!byStation };
+    }
+
+    function getFlowRecencyPolicy(dateStr, stationCode) {
+        const daysAhead = getDaysAheadFromToday(dateStr);
+        if (!Number.isFinite(daysAhead)) return null;
+        const weights = getFlowWeightProfile(dateStr, stationCode);
+
+        if (daysAhead >= 8) {
+            return { stage: 'far', daysAhead, currentWeight: 0, rangeWeight: 1, label: '장기예측', ...weights };
+        }
+
+        if (daysAhead >= 2) {
+            const t = clamp((7 - daysAhead) / 5, 0, 1); // D-7 -> 0, D-2 -> 1
+            const currentWeight = weights.midStart + (weights.midEnd - weights.midStart) * t;
+            return {
+                stage: 'mid',
+                daysAhead,
+                currentWeight,
+                rangeWeight: 1 - currentWeight,
+                label: '근접보정',
+                ...weights
+            };
+        }
+
+        // D-1, 당일, 과거일: 최신 유속값 비중을 높여 반영
+        const currentWeight = weights.near;
+        return {
+            stage: 'near',
+            daysAhead,
+            currentWeight,
+            rangeWeight: 1 - currentWeight,
+            label: daysAhead === 1 ? 'D-1 보정' : (daysAhead === 0 ? '당일보정' : '사후보정'),
+            ...weights
+        };
+    }
+
+    function formatFlowLeadText(daysAhead) {
+        if (!Number.isFinite(daysAhead)) return '';
+        if (daysAhead > 0) return `D-${daysAhead}`;
+        if (daysAhead === 0) return '당일';
+        return `D+${Math.abs(daysAhead)}`;
+    }
+
+    function percentile(sortedValues, p) {
+        if (!sortedValues || sortedValues.length === 0) return null;
+        if (sortedValues.length === 1) return sortedValues[0];
+        const idx = (sortedValues.length - 1) * clamp(p, 0, 1);
+        const lo = Math.floor(idx);
+        const hi = Math.ceil(idx);
+        if (lo === hi) return sortedValues[lo];
+        const w = idx - lo;
+        return sortedValues[lo] * (1 - w) + sortedValues[hi] * w;
+    }
+
+    function getFlowStatsCacheKey(stationCode) {
+        return FLOW_STATS_CACHE_PREFIX + stationCode;
+    }
+
+    function getCachedFlowStats(stationCode) {
+        if (!stationCode) return null;
+        try {
+            const raw = localStorage.getItem(getFlowStatsCacheKey(stationCode));
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return null;
+            if (!Number.isFinite(parsed.p10) || !Number.isFinite(parsed.p90)) return null;
+            if (typeof parsed.updatedAt !== 'string') return null;
+            return parsed;
+        } catch {
+            return null;
+        }
+    }
+
+    function setCachedFlowStats(stationCode, stats) {
+        if (!stationCode || !stats) return;
+        try {
+            localStorage.setItem(getFlowStatsCacheKey(stationCode), JSON.stringify(stats));
+        } catch {
+            // localStorage 사용 불가 환경은 메모리 캐시만 사용
+        }
+    }
+
+    function getFlowStats(stationCode) {
+        if (!stationCode) return null;
+        if (flowStatsMemoryCache[stationCode]) return flowStatsMemoryCache[stationCode];
+        const cached = getCachedFlowStats(stationCode);
+        if (cached) {
+            flowStatsMemoryCache[stationCode] = cached;
+            return cached;
+        }
+        return null;
+    }
+
+    function isFlowStatsUsable(stats, dateStr) {
+        if (!stats) return false;
+        if (!Number.isFinite(stats.p10) || !Number.isFinite(stats.p90) || stats.p90 <= stats.p10) return false;
+        if (!stats.updatedAt) return false;
+        const updatedAt = Date.parse(stats.updatedAt);
+        if (!Number.isFinite(updatedAt)) return false;
+        if ((Date.now() - updatedAt) > FLOW_STATS_CACHE_TTL_MS) return false;
+        if (!dateStr || !/^\d{8}$/.test(dateStr)) return true;
+        if (!stats.windowStart || !stats.windowEnd) return true;
+        const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        return dateKey >= stats.windowStart && dateKey <= stats.windowEnd;
+    }
+
+    function collectDailyDiffsFromItems(items) {
+        const byDay = {};
+        for (const item of items || []) {
+            const predcDt = String(item.predcDt || '');
+            if (predcDt.length < 16) continue;
+            const dateKey = predcDt.substring(0, 10);
+            const time = predcDt.substring(11, 16);
+            if (time < '05:00' || time > '18:00') continue;
+
+            const level = parseFloat(item.predcTdlvVl);
+            const extrSe = parseInt(item.extrSe, 10);
+            if (!Number.isFinite(level) || !Number.isFinite(extrSe)) continue;
+
+            if (!byDay[dateKey]) byDay[dateKey] = { highs: [], lows: [] };
+            if (extrSe % 2 === 1) byDay[dateKey].highs.push(level);
+            else byDay[dateKey].lows.push(level);
+        }
+
+        const diffs = {};
+        Object.entries(byDay).forEach(([dateKey, v]) => {
+            if (v.highs.length === 0 || v.lows.length === 0) return;
+            const diff = Math.max(...v.highs) - Math.min(...v.lows);
+            if (Number.isFinite(diff) && diff > 0) diffs[dateKey] = diff;
+        });
+        return diffs;
+    }
+
+    async function buildFlowStatsForStation(stationCode, baseDateStr) {
+        const endDate = parseReqDate(baseDateStr);
+        if (!endDate) return null;
+        const startDate = addDays(endDate, -FLOW_STATS_LOOKBACK_DAYS);
+        const startKey = formatDateKey(startDate);
+        const endKey = formatDateKey(endDate);
+
+        const reqDates = [];
+        for (let d = new Date(startDate); d <= endDate; d = addDays(d, FLOW_STATS_STEP_DAYS)) {
+            reqDates.push(formatReqDate(d));
+        }
+        if (reqDates[reqDates.length - 1] !== baseDateStr) {
+            reqDates.push(baseDateStr);
+        }
+
+        const dayDiffMap = {};
+        for (let i = 0; i < reqDates.length; i += FLOW_STATS_FETCH_CONCURRENCY) {
+            const chunk = reqDates.slice(i, i + FLOW_STATS_FETCH_CONCURRENCY);
+            const responses = await Promise.all(chunk.map(async (reqDate) => {
+                try {
+                    const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
+                        obsCode: stationCode,
+                        reqDate,
+                        numOfRows: '20',
+                        pageNo: '1'
+                    });
+                    return items;
+                } catch {
+                    return [];
+                }
+            }));
+
+            for (const items of responses) {
+                const dailyDiffs = collectDailyDiffsFromItems(items);
+                Object.entries(dailyDiffs).forEach(([dateKey, diff]) => {
+                    if (dateKey < startKey || dateKey > endKey) return;
+                    dayDiffMap[dateKey] = diff;
+                });
+            }
+        }
+
+        const diffs = Object.values(dayDiffMap).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+        if (diffs.length < FLOW_STATS_MIN_SAMPLES) return null;
+
+        const p10 = percentile(diffs, 0.10);
+        const p90 = percentile(diffs, 0.90);
+        if (!Number.isFinite(p10) || !Number.isFinite(p90) || p90 <= p10) return null;
+
+        return {
+            stationCode,
+            p10: Math.round(p10 * 10) / 10,
+            p90: Math.round(p90 * 10) / 10,
+            sampleCount: diffs.length,
+            windowStart: startKey,
+            windowEnd: endKey,
+            updatedAt: new Date().toISOString(),
+        };
+    }
+
+    async function primeFlowStats(stationCode, dateStr) {
+        if (!stationCode || !/^\d{8}$/.test(dateStr || '')) return false;
+        const existing = getFlowStats(stationCode);
+        if (isFlowStatsUsable(existing, dateStr)) return false;
+        if (flowStatsInFlight[stationCode]) return flowStatsInFlight[stationCode];
+
+        flowStatsInFlight[stationCode] = (async () => {
+            const stats = await buildFlowStatsForStation(stationCode, dateStr);
+            if (!stats) return false;
+            flowStatsMemoryCache[stationCode] = stats;
+            setCachedFlowStats(stationCode, stats);
+            return true;
+        })().catch(() => false).finally(() => {
+            delete flowStatsInFlight[stationCode];
+        });
+
+        return flowStatsInFlight[stationCode];
+    }
+
+    function requestFlowStatsPrime(stationCode, dateStr, refreshOnUpdate = false) {
+        primeFlowStats(stationCode, dateStr).then((updated) => {
+            if (!updated || !refreshOnUpdate) return;
+            if (stationCode !== getStation() || dateStr !== getDateStr()) return;
+            fetchTideHighLow();
+        }).catch(() => {});
+    }
+
+    // 조차 기반 보조 지표 계산 (fallback)
+    function calcRangeFlowPct(diff, stationCode, dateStr) {
         if (diff == null || diff <= 0) return null;
+
+        // 동적 정규화가 준비되어 있으면 우선 사용 (0~100 고정)
+        const stats = getFlowStats(stationCode);
+        if (isFlowStatsUsable(stats, dateStr)) {
+            const normalized = ((diff - stats.p10) / (stats.p90 - stats.p10)) * 100;
+            return Math.round(clamp(normalized, 0, 100));
+        }
+
+        // fallback: 관측소별 최대 조차 기준 (기존 방식, 최소 5% 하한 제거)
         const maxRange = MAX_TIDAL_RANGE[stationCode] || 300; // fallback: 미등록 관측소용 중간값
         const pct = Math.round(Math.min(100, (diff / maxRange) * 100));
-        return Math.max(5, pct); // 최소 5%
+        return Math.max(0, pct);
     }
 
     function getMulddaeInfo(dateStr) {
@@ -876,6 +1194,415 @@
         const lunar = solarToLunar(y, m, d);
         const mulddae = getMulddae(lunar.lunarDay);
         return { ...mulddae, lunarMonth: lunar.lunarMonth, lunarDay: lunar.lunarDay };
+    }
+
+    // ==================== 물흐름(유속 crsp) 기반 퍼센트 ====================
+    const CURRENT_FLOW_STATS_CACHE_PREFIX = 'currentFlowStats.v1.';
+    const CURRENT_FLOW_STATS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7일
+    const CURRENT_FLOW_LOOKBACK_DAYS = FLOW_STATS_LOOKBACK_DAYS;
+    const CURRENT_FLOW_STEP_DAYS = FLOW_STATS_STEP_DAYS;
+    const CURRENT_FLOW_MIN_SAMPLES = FLOW_STATS_MIN_SAMPLES;
+    const CURRENT_FLOW_FETCH_CONCURRENCY = FLOW_STATS_FETCH_CONCURRENCY;
+    const currentFlowStatsMemoryCache = {};
+    const currentFlowStatsInFlight = {};
+    const currentFlowSnapshotCache = {};
+    let mulddaeCardState = null;
+    window._lastMulddaePct = null;
+    window._fishingIndexInfo = null;
+
+    function getCurrentFlowStatsCacheKey(currentCode) {
+        return CURRENT_FLOW_STATS_CACHE_PREFIX + currentCode;
+    }
+
+    function getCachedCurrentFlowStats(currentCode) {
+        if (!currentCode) return null;
+        try {
+            const raw = localStorage.getItem(getCurrentFlowStatsCacheKey(currentCode));
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object') return null;
+            if (!Number.isFinite(parsed.p10) || !Number.isFinite(parsed.p90)) return null;
+            if (typeof parsed.updatedAt !== 'string') return null;
+            return parsed;
+        } catch {
+            return null;
+        }
+    }
+
+    function setCachedCurrentFlowStats(currentCode, stats) {
+        if (!currentCode || !stats) return;
+        try {
+            localStorage.setItem(getCurrentFlowStatsCacheKey(currentCode), JSON.stringify(stats));
+        } catch {
+            // localStorage 사용 불가 환경은 메모리 캐시만 사용
+        }
+    }
+
+    function getCurrentFlowStats(currentCode) {
+        if (!currentCode) return null;
+        if (currentFlowStatsMemoryCache[currentCode]) return currentFlowStatsMemoryCache[currentCode];
+        const cached = getCachedCurrentFlowStats(currentCode);
+        if (cached) {
+            currentFlowStatsMemoryCache[currentCode] = cached;
+            return cached;
+        }
+        return null;
+    }
+
+    function isCurrentFlowStatsUsable(stats, dateStr) {
+        if (!stats) return false;
+        if (!Number.isFinite(stats.p10) || !Number.isFinite(stats.p90) || stats.p90 <= stats.p10) return false;
+        if (!stats.updatedAt) return false;
+        const updatedAt = Date.parse(stats.updatedAt);
+        if (!Number.isFinite(updatedAt)) return false;
+        if ((Date.now() - updatedAt) > CURRENT_FLOW_STATS_CACHE_TTL_MS) return false;
+        if (!dateStr || !/^\d{8}$/.test(dateStr)) return true;
+        if (!stats.windowStart || !stats.windowEnd) return true;
+        const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        return dateKey >= stats.windowStart && dateKey <= stats.windowEnd;
+    }
+
+    function collectDailyMaxSpeedsFromItems(items) {
+        const byDay = {};
+        for (const item of items || []) {
+            const predcDt = String(item.predcDt || '');
+            if (predcDt.length < 16) continue;
+            const dateKey = predcDt.substring(0, 10);
+            const time = predcDt.substring(11, 16);
+            if (time < '05:00' || time > '18:00') continue;
+
+            const speed = parseFloat(item.crsp);
+            if (!Number.isFinite(speed) || speed < 0) continue;
+            if (!Number.isFinite(byDay[dateKey]) || speed > byDay[dateKey]) {
+                byDay[dateKey] = speed;
+            }
+        }
+        return byDay;
+    }
+
+    async function buildCurrentFlowStatsForStation(currentCode, baseDateStr) {
+        const endDate = parseReqDate(baseDateStr);
+        if (!endDate) return null;
+        const startDate = addDays(endDate, -CURRENT_FLOW_LOOKBACK_DAYS);
+        const startKey = formatDateKey(startDate);
+        const endKey = formatDateKey(endDate);
+
+        const reqDates = [];
+        for (let d = new Date(startDate); d <= endDate; d = addDays(d, CURRENT_FLOW_STEP_DAYS)) {
+            reqDates.push(formatReqDate(d));
+        }
+        if (reqDates[reqDates.length - 1] !== baseDateStr) {
+            reqDates.push(baseDateStr);
+        }
+
+        const dayMaxMap = {};
+        for (let i = 0; i < reqDates.length; i += CURRENT_FLOW_FETCH_CONCURRENCY) {
+            const chunk = reqDates.slice(i, i + CURRENT_FLOW_FETCH_CONCURRENCY);
+            const responses = await Promise.all(chunk.map(async (reqDate) => {
+                try {
+                    const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+                        obsCode: currentCode,
+                        reqDate,
+                        numOfRows: '300',
+                        pageNo: '1'
+                    });
+                    return items;
+                } catch {
+                    return [];
+                }
+            }));
+
+            for (const items of responses) {
+                const dailyMax = collectDailyMaxSpeedsFromItems(items);
+                Object.entries(dailyMax).forEach(([dateKey, maxSpeed]) => {
+                    if (dateKey < startKey || dateKey > endKey) return;
+                    dayMaxMap[dateKey] = maxSpeed;
+                });
+            }
+        }
+
+        const speeds = Object.values(dayMaxMap).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+        if (speeds.length < CURRENT_FLOW_MIN_SAMPLES) return null;
+
+        const p10 = percentile(speeds, 0.10);
+        const p90 = percentile(speeds, 0.90);
+        if (!Number.isFinite(p10) || !Number.isFinite(p90) || p90 <= p10) return null;
+
+        return {
+            currentCode,
+            p10: Math.round(p10 * 10) / 10,
+            p90: Math.round(p90 * 10) / 10,
+            sampleCount: speeds.length,
+            windowStart: startKey,
+            windowEnd: endKey,
+            updatedAt: new Date().toISOString(),
+        };
+    }
+
+    async function primeCurrentFlowStats(currentCode, dateStr) {
+        if (!currentCode || !/^\d{8}$/.test(dateStr || '')) return false;
+        const existing = getCurrentFlowStats(currentCode);
+        if (isCurrentFlowStatsUsable(existing, dateStr)) return false;
+        if (currentFlowStatsInFlight[currentCode]) return currentFlowStatsInFlight[currentCode];
+
+        currentFlowStatsInFlight[currentCode] = (async () => {
+            const stats = await buildCurrentFlowStatsForStation(currentCode, dateStr);
+            if (!stats) return false;
+            currentFlowStatsMemoryCache[currentCode] = stats;
+            setCachedCurrentFlowStats(currentCode, stats);
+            return true;
+        })().catch(() => false).finally(() => {
+            delete currentFlowStatsInFlight[currentCode];
+        });
+
+        return currentFlowStatsInFlight[currentCode];
+    }
+
+    function getCurrentFlowSnapshotKey(currentCode, dateStr) {
+        return `${currentCode || ''}:${dateStr || ''}`;
+    }
+
+    function setCurrentFlowSnapshot(currentCode, dateStr, snapshot) {
+        if (!currentCode || !/^\d{8}$/.test(dateStr || '') || !snapshot) return;
+        currentFlowSnapshotCache[getCurrentFlowSnapshotKey(currentCode, dateStr)] = snapshot;
+    }
+
+    function getCurrentFlowSnapshot(currentCode, dateStr) {
+        if (!currentCode || !/^\d{8}$/.test(dateStr || '')) return null;
+        return currentFlowSnapshotCache[getCurrentFlowSnapshotKey(currentCode, dateStr)] || null;
+    }
+
+    function calcCurrentFlowPct(maxSpeed, currentCode, dateStr) {
+        if (maxSpeed == null || !Number.isFinite(maxSpeed) || maxSpeed < 0) return null;
+        const stats = getCurrentFlowStats(currentCode);
+        if (isCurrentFlowStatsUsable(stats, dateStr)) {
+            const normalized = ((maxSpeed - stats.p10) / (stats.p90 - stats.p10)) * 100;
+            return Math.round(clamp(normalized, 0, 100));
+        }
+        // 초기 수집 전에는 절대 유속값(0~100cm/s)을 임시 퍼센트로 사용
+        return Math.round(clamp(maxSpeed, 0, 100));
+    }
+
+    function resolveMulddaeFlowPct(dateStr, rangePct, currentSnap, stationCode) {
+        const rangeValue = Number.isFinite(rangePct) ? clamp(Math.round(rangePct), 0, 100) : null;
+        const currentValue = (currentSnap && Number.isFinite(currentSnap.pct))
+            ? clamp(Math.round(currentSnap.pct), 0, 100)
+            : null;
+        const policy = getFlowRecencyPolicy(dateStr, stationCode);
+
+        if (currentValue == null && rangeValue == null) {
+            return { pct: null, mode: 'none', sourceLabel: '데이터없음', policy: null };
+        }
+        if (policy == null) {
+            if (currentValue != null) return { pct: currentValue, mode: 'current', sourceLabel: '유속기반', policy: null, currentWeight: 1, rangeWeight: 0 };
+            return { pct: rangeValue, mode: 'range', sourceLabel: '조차기반', policy: null, currentWeight: 0, rangeWeight: 1 };
+        }
+
+        if (policy.stage === 'far') {
+            if (rangeValue != null) {
+                return {
+                    pct: rangeValue,
+                    mode: 'range',
+                    sourceLabel: '조차기반',
+                    policy,
+                    currentWeight: 0,
+                    rangeWeight: 1
+                };
+            }
+            return {
+                pct: currentValue,
+                mode: 'current',
+                sourceLabel: '유속기반',
+                policy,
+                currentWeight: 1,
+                rangeWeight: 0
+            };
+        }
+
+        if (currentValue != null && rangeValue != null) {
+            const blended = Math.round(clamp(
+                currentValue * policy.currentWeight + rangeValue * policy.rangeWeight,
+                0,
+                100
+            ));
+            const mode = policy.stage === 'near' ? 'currentWeighted' : 'hybrid';
+            return {
+                pct: blended,
+                mode,
+                sourceLabel: mode === 'hybrid' ? '혼합보정' : '유속가중',
+                policy,
+                currentWeight: policy.currentWeight,
+                rangeWeight: policy.rangeWeight
+            };
+        }
+
+        if (currentValue != null) {
+            return {
+                pct: currentValue,
+                mode: 'current',
+                sourceLabel: '유속기반',
+                policy,
+                currentWeight: 1,
+                rangeWeight: 0
+            };
+        }
+
+        return {
+            pct: rangeValue,
+            mode: 'range',
+            sourceLabel: '조차기반',
+            policy,
+            currentWeight: 0,
+            rangeWeight: 1
+        };
+    }
+
+    function buildCurrentFlowSnapshot(items, currentCode, dateStr) {
+        if (!items || items.length === 0 || !/^\d{8}$/.test(dateStr || '')) return null;
+        const datePrefix = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+        const dayItems = items.filter(i => i.predcDt && String(i.predcDt).startsWith(datePrefix));
+        const src = dayItems.length > 0 ? dayItems : items;
+
+        const speeds = [];
+        for (const item of src) {
+            const speed = parseFloat(item.crsp);
+            if (Number.isFinite(speed) && speed >= 0) speeds.push(speed);
+        }
+
+        const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : null;
+        const pct = calcCurrentFlowPct(maxSpeed, currentCode, dateStr);
+        return {
+            currentCode,
+            dateStr,
+            pct,
+            maxSpeed,
+            sampleCount: speeds.length,
+            obsvtrNm: String(src[0]?.obsvtrNm || ''),
+            updatedAt: new Date().toISOString(),
+        };
+    }
+
+    function requestCurrentFlowStatsPrime(currentCode, dateStr, refreshOnUpdate = false) {
+        primeCurrentFlowStats(currentCode, dateStr).then((updated) => {
+            if (!updated || !refreshOnUpdate) return;
+            const key = getCurrentFlowSnapshotKey(currentCode, dateStr);
+            const snap = currentFlowSnapshotCache[key];
+            if (snap && Number.isFinite(snap.maxSpeed)) {
+                snap.pct = calcCurrentFlowPct(snap.maxSpeed, currentCode, dateStr);
+                currentFlowSnapshotCache[key] = snap;
+            }
+            if (currentCode === getCurrentStation() && dateStr === getDateStr()) {
+                renderMulddaeCardFromState();
+            }
+        }).catch(() => {});
+    }
+
+    function renderMulddaeCardFromState() {
+        if (!mulddaeCardState) return;
+        const mulddaeCard = document.getElementById('mulddaeCard');
+        const mulddaeEl = document.getElementById('mulddaeInfo');
+        if (!mulddaeCard || !mulddaeEl) return;
+
+        const { dateStr, stationCode, mulddaeBase, diff, rangePct } = mulddaeCardState;
+        const mulddae = { ...mulddaeBase };
+        const currentCode = getCurrentStation();
+        const currentSnap = getCurrentFlowSnapshot(currentCode, dateStr);
+        const flowDecision = resolveMulddaeFlowPct(dateStr, rangePct, currentSnap, stationCode);
+        const activePct = flowDecision.pct;
+        if (activePct != null) mulddae.pct = activePct;
+        window._lastMulddaePct = mulddae.pct;
+
+        mulddaeCard.style.display = '';
+        document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
+
+        const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
+            : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
+            : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
+            : mulddae.name === '사리' ? '사리 전후 — 조차가 점차 줄어듭니다'
+            : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
+        const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
+
+        const rangePctText = Number.isFinite(rangePct) ? `${Math.round(rangePct)}%` : '-';
+        const diffText = Number.isFinite(diff) ? ` · 조차 ${Math.round(diff)}cm` : '';
+        const leadText = flowDecision.policy ? formatFlowLeadText(flowDecision.policy.daysAhead) : '';
+        const speedText = (currentSnap && Number.isFinite(currentSnap.maxSpeed)) ? `${currentSnap.maxSpeed.toFixed(1)}cm/s` : '-';
+        const obsName = currentSnap && currentSnap.obsvtrNm ? escapeHTML(currentSnap.obsvtrNm) : '';
+        const obsFlowText = obsName ? `${obsName} ${speedText}` : speedText;
+        const currentWeightPct = Number.isFinite(flowDecision.currentWeight) ? Math.round(flowDecision.currentWeight * 100) : null;
+        const rangeWeightPct = Number.isFinite(flowDecision.rangeWeight) ? Math.round(flowDecision.rangeWeight * 100) : null;
+        const badgeText = flowDecision.sourceLabel || '조차기반';
+        const tuningText = flowDecision.policy?.tuned ? '항만튜닝' : '';
+        const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
+        const fishingInfo = (window._fishingIndexInfo && window._fishingIndexInfo.reqDate === dateStr)
+            ? window._fishingIndexInfo
+            : null;
+        let subText = '';
+        let fishingText = '';
+
+        if (flowDecision.mode === 'hybrid' || flowDecision.mode === 'currentWeighted') {
+            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
+            const weightText = (currentWeightPct != null && rangeWeightPct != null)
+                ? `유속 ${currentWeightPct}% + 조차 ${rangeWeightPct}%`
+                : '';
+            subText = [leadPolicyText, weightText, obsFlowText, `조차강도 ${rangePctText}${diffText}`]
+                .filter(Boolean)
+                .join(' · ');
+        } else if (flowDecision.mode === 'current') {
+            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
+            subText = [leadPolicyText, `유속기반 ${obsFlowText}`, `조차강도 ${rangePctText}${diffText}`]
+                .filter(Boolean)
+                .join(' · ');
+        } else if (flowDecision.mode === 'range') {
+            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
+            subText = [leadPolicyText, `조차강도 ${rangePctText}${diffText}`]
+                .filter(Boolean)
+                .join(' · ');
+        } else if (!currentCode) {
+            subText = `조류예보점 없음 · 조차강도 ${rangePctText}${diffText}`;
+        } else {
+            subText = `유속/조차 데이터 계산 중`;
+        }
+
+        if (fishingInfo) {
+            const scoreText = Number.isFinite(fishingInfo.totalScore)
+                ? `${Math.round(fishingInfo.totalScore)}점`
+                : (Number.isFinite(fishingInfo.fishingScore) ? `${Math.round(fishingInfo.fishingScore)}점` : '-');
+            const gradeText = fishingInfo.grade ? ` ${escapeHTML(fishingInfo.grade)}` : '';
+            const placeText = fishingInfo.placeName ? ` ${escapeHTML(fishingInfo.placeName)}` : '';
+            const timeText = fishingInfo.baseTime ? ` ${escapeHTML(fishingInfo.baseTime)}` : '';
+            const detailParts = [];
+            if (Number.isFinite(fishingInfo.fishingScore)) detailParts.push(`낚시 ${Math.round(fishingInfo.fishingScore)}`);
+            if (Number.isFinite(fishingInfo.tideScore)) detailParts.push(`조석 ${Math.round(fishingInfo.tideScore)}`);
+            if (Number.isFinite(fishingInfo.weatherScore)) detailParts.push(`기상 ${Math.round(fishingInfo.weatherScore)}`);
+            if (Number.isFinite(fishingInfo.waterScore)) detailParts.push(`수온 ${Math.round(fishingInfo.waterScore)}`);
+            const detailText = detailParts.length > 0 ? ` · ${detailParts.join(' / ')}` : '';
+            fishingText = `🎣 바다낚시지수(${escapeHTML(fishingInfo.gubun || '선상')}) ${scoreText}${gradeText}${placeText}${timeText}${detailText}`;
+        }
+
+        mulddaeEl.innerHTML = `
+            <div class="mulddae-row1">
+                <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
+                    <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
+                    <span class="mulddae-num">${mulddae.num}</span>
+                </div>
+                <div class="mulddae-pct-wrap">
+                    <span style="color:var(--muted);font-size:0.85em;">물흐름</span>
+                    <span style="font-size:0.68em;color:var(--muted);padding:1px 6px;border:1px solid var(--border);border-radius:999px;">${badgeText}</span>
+                    <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${mulddae.color};"></div></div>
+                    <span style="color:${mulddae.color};font-weight:600;font-size:0.9em;">${pctValue != null ? `${pctValue}%` : '-'}</span>
+                    ${subText ? `<span style="font-size:0.7em;color:var(--muted);">(${subText})</span>` : ''}
+                </div>
+            </div>
+            <div class="mulddae-desc">${desc}</div>
+            ${fishingText ? `<div style="font-size:0.76em;color:#8fc4ff;">${fishingText}</div>` : ''}
+            <div class="mulddae-species">
+                ${speciesFit.map(s => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
+                    <span>${s.emoji}</span>
+                    <span style="color:var(--text);font-weight:600;">${s.name}</span>
+                    <span style="color:${s.color};font-weight:700;">${s.grade}</span>
+                    <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
+                </div>`).join('')}
+            </div>`;
     }
 
     // ==================== 일출/일몰 천문계산 (SunCalc 알고리즘) ====================
@@ -995,6 +1722,12 @@
         'tideFcstHghLw/GetTideFcstHghLwApiService': '/api/tide-hilo',
         'surveyTideLevel/GetSurveyTideLevelApiService': '/api/tide-level',
         'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
+        'tideFcstTime/GetTideFcstTimeApiService': '/api/tide-time',
+        'deviationCal/GetDeviationCalApiService': '/api/deviation',
+        'lsTermTideObs/GetLsTermTideObsApiService': '/api/ls-term-tide-obs',
+        'tidebed/GetTideBedPreApiService': '/api/tidebed',
+        'crntFcstFldEbb/GetCrntFcstFldEbbApiService': '/api/current-fld-ebb',
+        'fcstFishingv2/GetFcstFishingApiServicev2': '/api/fishing-index',
     };
 
     async function apiCall(path, params) {
@@ -1002,8 +1735,10 @@
         if (!endpoint) throw new Error(`Unknown API path: ${path}`);
 
         const url = new URL(`${API_BASE}${endpoint}`);
-        if (params.obsCode) url.searchParams.set('obsCode', params.obsCode);
-        if (params.reqDate) url.searchParams.set('reqDate', params.reqDate);
+        Object.entries(params || {}).forEach(([k, v]) => {
+            if (v == null || v === '') return;
+            url.searchParams.set(k, String(v));
+        });
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -1016,11 +1751,35 @@
         if (!ct.includes('json')) throw new Error('잘못된 응답 형식');
         const json = await resp.json();
 
-        if (json.header && json.header.resultCode !== '00') {
-            throw new Error(json.header.resultMsg || 'API 오류');
+        const resultCode = json?.header?.resultCode || json?.response?.header?.resultCode || null;
+        const resultMsg = json?.header?.resultMsg || json?.response?.header?.resultMsg || null;
+        if (resultCode && resultCode !== '00') {
+            throw new Error(resultMsg || 'API 오류');
         }
-        const items = json.body?.items?.item || [];
+        const items = json?.body?.items?.item
+            || json?.response?.body?.items?.item
+            || json?.result?.data
+            || [];
         return Array.isArray(items) ? items : [items];
+    }
+
+    async function apiCallRaw(endpoint, params) {
+        const url = new URL(`${API_BASE}${endpoint}`);
+        Object.entries(params || {}).forEach(([k, v]) => {
+            if (v == null || v === '') return;
+            url.searchParams.set(k, String(v));
+        });
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+        let resp;
+        try {
+            resp = await fetch(url.toString(), { signal: controller.signal });
+        } finally { clearTimeout(timeoutId); }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const ct = resp.headers.get('content-type') || '';
+        if (!ct.includes('json')) throw new Error('잘못된 응답 형식');
+        return await resp.json();
     }
 
     // ==================== FETCH ALL ====================
@@ -1049,19 +1808,38 @@
         summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
 
         try {
+            const stationCode = getStation();
+            const dateStr = getDateStr();
+            window._fishingIndexInfo = null;
             const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
-                obsCode: getStation(),
-                reqDate: getDateStr(),
+                obsCode: stationCode,
+                reqDate: dateStr,
                 numOfRows: '20',
                 pageNo: '1'
             });
+            const deviationPromise = apiCall('deviationCal/GetDeviationCalApiService', {
+                obsCode: stationCode,
+                reqDate: dateStr,
+                numOfRows: '50',
+                pageNo: '1'
+            }).then(parseDeviationText).catch(() => '');
+            const lsTermObsPromise = apiCall('lsTermTideObs/GetLsTermTideObsApiService', {
+                obsCode: stationCode,
+                reqDate: dateStr,
+                numOfRows: '24',
+                pageNo: '1'
+            }).then(parseLsTermObsText).catch(() => '');
+            const harmonicsPromise = apiCallRaw('/api/khoa/tide-harmonics', {
+                obsCode: stationCode
+            }).then(parseTideHarmonicsText).catch(() => '');
+            const fishingPromise = fetchFishingIndexInfo(stationCode, dateStr).catch(() => null);
 
             if (!items || items.length === 0) {
                 summaryEl.innerHTML = '<div class="error-msg">데이터가 없습니다.</div>';
                 return;
             }
 
-            const dateStr = getDateStr();
+            requestFlowStatsPrime(stationCode, dateStr, true);
             const datePrefix = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
             const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
             const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
@@ -1080,46 +1858,26 @@
             const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
             const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
 
-            // 물때 정보 표시 (실제 조차 기반 물흐름 % 적용)
-            const mulddae = getMulddaeInfo(dateStr);
-            const realPct = calcFlowPct(diff, getStation());
-            if (realPct !== null) {
-                mulddae.pct = realPct;
-            }
-            const mulddaeEl = document.getElementById('mulddaeInfo');
-            const mulddaeCard = document.getElementById('mulddaeCard');
-            mulddaeCard.style.display = '';
-            document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
-            const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
-                : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
-                : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
-                : mulddae.name === '사리' ? '사리 전후 — 조차가 점차 줄어듭니다'
-                : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
-            const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
-            mulddaeEl.innerHTML = `
-                <div class="mulddae-row1">
-                    <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
-                        <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
-                        <span class="mulddae-num">${mulddae.num}</span>
-                    </div>
-                    <div class="mulddae-pct-wrap">
-                        <span style="color:var(--muted);font-size:0.85em;">물흐름</span>
-                        <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${mulddae.pct}%;background:${mulddae.color};"></div></div>
-                        <span style="color:${mulddae.color};font-weight:600;font-size:0.9em;">${mulddae.pct}%</span>
-                        ${realPct !== null ? '<span style="font-size:0.7em;color:var(--muted);">(조차 ' + diff + 'cm)</span>' : ''}
-                    </div>
-                </div>
-                <div class="mulddae-desc">${desc}</div>
-                <div class="mulddae-species">
-                    ${speciesFit.map(s => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
-                        <span>${s.emoji}</span>
-                        <span style="color:var(--text);font-weight:600;">${s.name}</span>
-                        <span style="color:${s.color};font-weight:700;">${s.grade}</span>
-                        <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
-                    </div>`).join('')}
-                </div>`;
+            // 물때 카드: 주지표는 유속(crsp), 조차기반은 보조지표로 함께 표시
+            const rangePct = calcRangeFlowPct(diff, stationCode, dateStr);
+            mulddaeCardState = {
+                dateStr,
+                stationCode,
+                mulddaeBase: getMulddaeInfo(dateStr),
+                diff,
+                rangePct
+            };
+            renderMulddaeCardFromState();
+            const [deviationText, lsTermObsText, harmonicsText, fishingInfo] = await Promise.all([
+                deviationPromise,
+                lsTermObsPromise,
+                harmonicsPromise,
+                fishingPromise
+            ]);
+            window._fishingIndexInfo = fishingInfo;
+            renderMulddaeCardFromState();
             // 일출/일몰 계산
-            const sunTimes = getSunTimesForStation(getDateStr(), getStation());
+            const sunTimes = getSunTimesForStation(dateStr, stationCode);
 
             summaryEl.innerHTML = `
                 <div class="tide-summary">
@@ -1136,7 +1894,7 @@
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
                         <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
-                        <div class="time"></div>
+                        <div class="time">${[deviationText, lsTermObsText, harmonicsText].filter(Boolean).join(' · ')}</div>
                     </div>
                 </div>`;
 
@@ -1190,19 +1948,453 @@
         return { labels, predicted };
     }
 
+    function toFiniteNumber(v) {
+        const n = parseFloat(v);
+        return Number.isFinite(n) ? n : null;
+    }
+
+    function normalizeClockTime(raw) {
+        if (raw == null) return null;
+        const s = String(raw).trim();
+        if (!s) return null;
+
+        let m = s.match(/(\d{2}):(\d{2})/);
+        if (m) return `${m[1]}:${m[2]}`;
+
+        m = s.match(/(?:^|\D)(\d{2})(\d{2})(?:\D|$)/);
+        if (m) return `${m[1]}:${m[2]}`;
+
+        const short = s.match(/^(\d{1,2}):(\d{2})$/);
+        if (short) return `${String(parseInt(short[1], 10)).padStart(2, '0')}:${short[2]}`;
+
+        return null;
+    }
+
+    function extractByKeysCaseInsensitive(obj, keys) {
+        if (!obj || !keys || keys.length === 0) return null;
+        const keyMap = {};
+        Object.keys(obj).forEach((k) => { keyMap[k.toLowerCase()] = k; });
+
+        for (const key of keys) {
+            if (obj[key] != null && obj[key] !== '') return obj[key];
+            const real = keyMap[String(key).toLowerCase()];
+            if (real && obj[real] != null && obj[real] !== '') return obj[real];
+        }
+        return null;
+    }
+
+    function buildTimeSeriesMap(items, timeKeys, valueKeys) {
+        const map = {};
+        (items || []).forEach((item) => {
+            const tRaw = extractByKeysCaseInsensitive(item, timeKeys);
+            const vRaw = extractByKeysCaseInsensitive(item, valueKeys);
+            const time = normalizeClockTime(tRaw);
+            const val = toFiniteNumber(vRaw);
+            if (!time || val == null) return;
+            map[time] = Math.round(val * 10) / 10;
+        });
+        return map;
+    }
+
+    function mergePredictedWithSeriesMap(labels, predicted, seriesMap) {
+        if (!labels || labels.length === 0) return predicted;
+        const keys = Object.keys(seriesMap || {});
+        if (keys.length === 0) return predicted;
+        return labels.map((lbl, idx) => (seriesMap[lbl] != null ? seriesMap[lbl] : predicted[idx]));
+    }
+
+    function buildLabelsAndPredictedFromSeriesMap(seriesMap) {
+        const keys = Object.keys(seriesMap || {}).sort();
+        if (keys.length === 0) return { labels: [], predicted: [] };
+        return {
+            labels: keys,
+            predicted: keys.map((k) => seriesMap[k]),
+        };
+    }
+
+    function parseFldEbbSummary(items) {
+        if (!items || items.length === 0) return null;
+        const rec = items[0] || {};
+
+        const fldTime = normalizeClockTime(extractByKeysCaseInsensitive(rec, [
+            'fldTm', 'fldTime', 'floodTm', 'floodTime', 'maxFldTm', 'maxFloodTm', 'maxFloodTime', 'fldDt'
+        ]));
+        const ebbTime = normalizeClockTime(extractByKeysCaseInsensitive(rec, [
+            'ebbTm', 'ebbTime', 'maxEbbTm', 'maxEbbTime', 'ebbDt'
+        ]));
+        const fldSpeed = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'fldSpd', 'fldSpeed', 'floodSpd', 'floodSpeed', 'maxFldSpd', 'maxFloodSpd'
+        ]));
+        const ebbSpeed = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'ebbSpd', 'ebbSpeed', 'maxEbbSpd'
+        ]));
+
+        if (!fldTime && !ebbTime && fldSpeed == null && ebbSpeed == null) return null;
+        return { fldTime, ebbTime, fldSpeed, ebbSpeed };
+    }
+
+    function parseDeviationText(items) {
+        if (!items || items.length === 0) return '';
+        const rec = items[0] || {};
+
+        let raw = extractByKeysCaseInsensitive(rec, [
+            'deviation', 'deviationVal', 'deviationVl', 'devVal', 'devVl', 'dev'
+        ]);
+        if (raw == null) {
+            for (const k of Object.keys(rec)) {
+                const lk = k.toLowerCase();
+                if (lk.includes('devi') || lk.startsWith('dev')) {
+                    raw = rec[k];
+                    break;
+                }
+            }
+        }
+        const v = toFiniteNumber(raw);
+        if (v == null) return '';
+        const rounded = Math.round(v);
+        const sign = rounded > 0 ? '+' : '';
+        return `편차 ${sign}${rounded}cm`;
+    }
+
+    function parseLsTermObsText(items) {
+        if (!items || items.length === 0) return '';
+        const rec = items[0] || {};
+
+        const obs = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'obsrvnTdlvVl', 'obsrvnVal', 'obsVal', 'obsrvnHgt', 'tdlvHgt'
+        ]));
+        const pred = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'predcTdlvVl', 'predcVal', 'predVal', 'bscTdlvHgt'
+        ]));
+        const dt = extractByKeysCaseInsensitive(rec, [
+            'obsrvnDt', 'predcDt', 'baseTime', 'tm'
+        ]);
+        const tm = normalizeClockTime(dt);
+
+        if (obs != null && pred != null) {
+            const delta = Math.round((obs - pred) * 10) / 10;
+            const sign = delta > 0 ? '+' : '';
+            return `장단기관측 ${tm ? tm + ' ' : ''}${sign}${delta}cm`;
+        }
+        if (obs != null) return `장단기관측 ${tm ? tm + ' ' : ''}${Math.round(obs)}cm`;
+        if (pred != null) return `장단기관측예측 ${tm ? tm + ' ' : ''}${Math.round(pred)}cm`;
+        return '';
+    }
+
+    function parseTideHarmonicsText(raw) {
+        if (!raw) return '';
+        const base = raw.result?.data != null ? raw.result.data : raw;
+        const rows = Array.isArray(base)
+            ? base
+            : (Array.isArray(base?.data) ? base.data : (base && typeof base === 'object' ? [base] : []));
+        if (!rows || rows.length === 0) return '';
+
+        const normalized = rows.map((row) => {
+            const nameRaw = extractByKeysCaseInsensitive(row, ['hc_name', 'hcName', 'constituent', 'name']);
+            const amp = toFiniteNumber(extractByKeysCaseInsensitive(row, ['amp', 'amplitude', 'ampl']));
+            const name = nameRaw == null ? '' : String(nameRaw).trim().toUpperCase();
+            return { name, amp };
+        }).filter((r) => r.name && Number.isFinite(r.amp));
+        if (normalized.length === 0) return '';
+
+        const byName = new Map();
+        normalized.forEach((r) => {
+            if (!byName.has(r.name)) byName.set(r.name, r);
+        });
+
+        const preferred = ['M2', 'S2', 'K1', 'O1'];
+        const picked = [];
+        preferred.forEach((key) => {
+            const hit = byName.get(key);
+            if (hit) picked.push(hit);
+        });
+
+        if (picked.length === 0) {
+            normalized.sort((a, b) => b.amp - a.amp);
+            normalized.slice(0, 4).forEach((r) => picked.push(r));
+        }
+        if (picked.length === 0) return '';
+
+        const text = picked.map((r) => `${r.name} ${r.amp.toFixed(2)}`).join(' ');
+        return `조화 ${text}`;
+    }
+
+    function getActiveFishingPlaceName(stationCode) {
+        if (window._selectedPort && window._selectedPort.name) return window._selectedPort.name;
+        const byStation = FISHING_PORTS.find((p) => p.station === stationCode);
+        if (byStation && byStation.name) return byStation.name;
+        let stationName = '';
+        for (const r of REGIONS) {
+            const hit = r.stations.find((s) => s[0] === stationCode);
+            if (hit) { stationName = hit[1]; break; }
+        }
+        return stationName || '';
+    }
+
+    function parseFishingIndexInfo(items, gubun, placeName, reqDate) {
+        if (!items || items.length === 0) return null;
+        const rec = items[0] || {};
+
+        const totalScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'total_score', 'totalScore', 'score', 'fishScore', 'fishingScore', 'fshnIdx'
+        ]));
+        const fishingScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'fishing_score', 'fishingScore', 'fish_score', 'fishScore'
+        ]));
+        const tideScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'tide_score', 'tideScore'
+        ]));
+        const weatherScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'weather_score', 'weatherScore'
+        ]));
+        const waterScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
+            'water_score', 'waterScore'
+        ]));
+
+        let grade = extractByKeysCaseInsensitive(rec, [
+            'idxGrade', 'grade', 'step', 'fishingGrade', 'fshnStep', 'fishingIndex'
+        ]);
+        if (!grade && Number.isFinite(totalScore)) {
+            if (totalScore >= 80) grade = '매우좋음';
+            else if (totalScore >= 65) grade = '좋음';
+            else if (totalScore >= 50) grade = '보통';
+            else grade = '주의';
+        }
+
+        const place = extractByKeysCaseInsensitive(rec, ['placeName', 'placeNm', 'spotName', 'spotNm']) || placeName;
+        const baseTimeRaw = extractByKeysCaseInsensitive(rec, ['baseTime', 'time', 'predcTime', 'tm']);
+        const baseTime = normalizeClockTime(baseTimeRaw);
+
+        if (!Number.isFinite(totalScore) && !Number.isFinite(fishingScore) && !grade) return null;
+
+        return {
+            reqDate,
+            gubun,
+            placeName: place || placeName || '',
+            grade: grade ? String(grade) : '',
+            totalScore,
+            fishingScore,
+            tideScore,
+            weatherScore,
+            waterScore,
+            baseTime: baseTime || '',
+        };
+    }
+
+    async function fetchFishingIndexInfo(stationCode, dateStr) {
+        const gubun = '선상';
+        const placeName = getActiveFishingPlaceName(stationCode);
+        const items = await apiCall('fcstFishingv2/GetFcstFishingApiServicev2', {
+            reqDate: dateStr,
+            gubun,
+            placeName,
+            include: 'total_score,fishing_score,tide_score,weather_score,water_score',
+            numOfRows: '20',
+            pageNo: '1'
+        });
+        return parseFishingIndexInfo(items, gubun, placeName, dateStr);
+    }
+
+    function pad2(n) {
+        return String(Math.max(0, Math.floor(n))).padStart(2, '0');
+    }
+
+    function getActiveGeoPoint(stationCode) {
+        const selectedPort = window._selectedPort;
+        if (selectedPort && Number.isFinite(selectedPort.lat) && Number.isFinite(selectedPort.lon)) {
+            return { lat: selectedPort.lat, lon: selectedPort.lon, name: selectedPort.name };
+        }
+
+        const portByStation = FISHING_PORTS.find((p) => p.station === stationCode);
+        if (portByStation && Number.isFinite(portByStation.lat) && Number.isFinite(portByStation.lon)) {
+            return { lat: portByStation.lat, lon: portByStation.lon, name: portByStation.name };
+        }
+
+        if (STATION_COORDS[stationCode]) {
+            return { lat: STATION_COORDS[stationCode][0], lon: STATION_COORDS[stationCode][1], name: stationCode };
+        }
+        return null;
+    }
+
+    function getKhoaAreaQueryTime(dateStr) {
+        const nowDateStr = getDateStr();
+        if (dateStr === nowDateStr) {
+            const now = new Date();
+            const h = now.getHours();
+            const m = Math.floor(now.getMinutes() / 10) * 10;
+            return { hour: pad2(h), minute: pad2(m), label: `${pad2(h)}:${pad2(m)}` };
+        }
+        return { hour: '12', minute: '00', label: '12:00' };
+    }
+
+    function getKhoaAreaBounds(lat, lon) {
+        const dLat = 0.10;
+        const rad = lat * Math.PI / 180;
+        const cosv = Math.max(Math.cos(rad), 0.35);
+        const dLon = dLat / cosv;
+        return {
+            minX: (lon - dLon).toFixed(4),
+            maxX: (lon + dLon).toFixed(4),
+            minY: (lat - dLat).toFixed(4),
+            maxY: (lat + dLat).toFixed(4),
+        };
+    }
+
+    function findNumericValue(obj, preferredKeys, matcher) {
+        if (!obj) return null;
+        for (const key of preferredKeys || []) {
+            const raw = extractByKeysCaseInsensitive(obj, [key]);
+            const v = toFiniteNumber(raw);
+            if (v != null) return { value: v, key };
+        }
+        for (const [k, raw] of Object.entries(obj)) {
+            const lk = k.toLowerCase();
+            if (!matcher(lk)) continue;
+            const v = toFiniteNumber(raw);
+            if (v != null) return { value: v, key: k };
+        }
+        return null;
+    }
+
+    function detectSpeedUnit(keyName) {
+        const k = String(keyName || '').toLowerCase();
+        if (k.includes('knot') || k.includes('kn')) return 'kn';
+        if (k.includes('cm')) return 'cm/s';
+        if (k.includes('mps') || k.includes('m_s') || k.includes('meter')) return 'm/s';
+        return '';
+    }
+
+    function degToCompass(deg) {
+        if (!Number.isFinite(deg)) return '';
+        const dirs = ['북', '북북동', '북동', '동북동', '동', '동남동', '남동', '남남동', '남', '남남서', '남서', '서남서', '서', '서북서', '북서', '북북서'];
+        const idx = Math.round((((deg % 360) + 360) % 360) / 22.5) % 16;
+        return dirs[idx];
+    }
+
+    function normalizeKhoaAreaRecords(raw) {
+        if (!raw) return [];
+        const base = raw.result?.data != null ? raw.result.data : raw;
+        if (Array.isArray(base)) return base;
+        if (Array.isArray(base?.features)) return base.features;
+        if (Array.isArray(base?.data)) return base.data;
+        if (Array.isArray(raw.features)) return raw.features;
+        return [];
+    }
+
+    function parseKhoaAreaSummary(raw) {
+        const records = normalizeKhoaAreaRecords(raw);
+        if (!records || records.length === 0) return null;
+
+        const speeds = [];
+        const dirs = [];
+        const units = [];
+
+        for (const rec0 of records) {
+            const rec = rec0 && rec0.properties ? rec0.properties : rec0;
+            if (!rec || typeof rec !== 'object') continue;
+
+            const speedHit = findNumericValue(
+                rec,
+                ['crsp', 'speed', 'current_speed', 'spd', 'velocity', 'vel', 'vSpd', 'currSpd'],
+                (lk) => (lk.includes('speed') || lk.includes('spd') || lk.includes('vel') || lk.includes('crsp')) && !lk.includes('dir')
+            );
+            const dirHit = findNumericValue(
+                rec,
+                ['crdir', 'direction', 'dir', 'current_dir', 'currDir'],
+                (lk) => lk.includes('dir') || lk.includes('direction')
+            );
+            const uHit = findNumericValue(
+                rec,
+                ['u', 'u_component', 'uComp', 'eastVel'],
+                (lk) => lk === 'u' || lk.includes('ucomp') || lk.includes('east')
+            );
+            const vHit = findNumericValue(
+                rec,
+                ['v', 'v_component', 'vComp', 'northVel'],
+                (lk) => lk === 'v' || lk.includes('vcomp') || lk.includes('north')
+            );
+
+            let speedVal = speedHit ? speedHit.value : null;
+            let dirDeg = dirHit ? dirHit.value : null;
+
+            if (speedVal == null && uHit && vHit) {
+                speedVal = Math.sqrt(uHit.value * uHit.value + vHit.value * vHit.value);
+            }
+            if (!Number.isFinite(dirDeg) && uHit && vHit) {
+                dirDeg = (Math.atan2(uHit.value, vHit.value) * 180 / Math.PI + 360) % 360;
+            }
+
+            if (Number.isFinite(speedVal)) {
+                speeds.push(speedVal);
+                units.push(detectSpeedUnit(speedHit?.key || ''));
+            }
+            if (Number.isFinite(dirDeg)) {
+                dirs.push(((dirDeg % 360) + 360) % 360);
+            }
+        }
+
+        if (speeds.length === 0) return null;
+        const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
+        const maxSpeed = Math.max(...speeds);
+        const unit = units.find((u) => !!u) || '';
+
+        let dirDegAvg = null;
+        if (dirs.length > 0) {
+            const sinSum = dirs.reduce((s, d) => s + Math.sin(d * Math.PI / 180), 0);
+            const cosSum = dirs.reduce((s, d) => s + Math.cos(d * Math.PI / 180), 0);
+            dirDegAvg = (Math.atan2(sinSum, cosSum) * 180 / Math.PI + 360) % 360;
+        }
+
+        return {
+            sampleCount: speeds.length,
+            avgSpeed,
+            maxSpeed,
+            unit,
+            dirDeg: dirDegAvg,
+            dirText: degToCompass(dirDegAvg),
+        };
+    }
+
     async function fetchTidePrediction() {
         try {
+            const stationCode = getStation();
+            const dateStr = getDateStr();
             let items = [];
             try {
                 items = await apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
-                    obsCode: getStation(),
-                    reqDate: getDateStr(),
+                    obsCode: stationCode,
+                    reqDate: dateStr,
                     min: '10',
                     numOfRows: '300',
                     pageNo: '1'
                 });
             } catch(e) {
                 // 실측 API 실패 시 무시 (미래 날짜 등)
+            }
+
+            let tideBedItems = [];
+            try {
+                tideBedItems = await apiCall('tidebed/GetTideBedPreApiService', {
+                    obsCode: stationCode,
+                    reqDate: dateStr,
+                    numOfRows: '1500',
+                    pageNo: '1'
+                });
+            } catch(e) {
+                // tidebed 실패 시 기존 보간 예측 유지
+            }
+
+            let tideTimeItems = [];
+            try {
+                tideTimeItems = await apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                    obsCode: stationCode,
+                    reqDate: dateStr,
+                    min: '10',
+                    numOfRows: '300',
+                    pageNo: '1'
+                });
+            } catch(e) {
+                // tideFcstTime 실패 시 무시
             }
 
             const hlData = window._hlData || [];
@@ -1213,6 +2405,33 @@
                 const interp = interpolateFromHiLo(hlData);
                 labels = interp.labels;
                 predicted = interp.predicted;
+            }
+
+            const tideBedMap = buildTimeSeriesMap(
+                tideBedItems,
+                ['predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime', 'obsrvnDt'],
+                ['predcTdlvVl', 'bscTdlvHgt', 'tdlvHgt', 'tdlvVl', 'tideLevel']
+            );
+            const tideTimeMap = buildTimeSeriesMap(
+                tideTimeItems,
+                ['predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime'],
+                ['predcTdlvVl', 'bscTdlvHgt', 'tdlvHgt', 'tdlvVl']
+            );
+
+            if (labels.length > 0) {
+                // 우선순위: tidebed(1분 예측) > tideFcstTime(시계열 예측) > 고저조 보간
+                predicted = mergePredictedWithSeriesMap(labels, predicted, tideTimeMap);
+                predicted = mergePredictedWithSeriesMap(labels, predicted, tideBedMap);
+            } else {
+                const fromBed = buildLabelsAndPredictedFromSeriesMap(tideBedMap);
+                const fromTime = buildLabelsAndPredictedFromSeriesMap(tideTimeMap);
+                if (fromBed.labels.length > 0) {
+                    labels = fromBed.labels;
+                    predicted = fromBed.predicted;
+                } else if (fromTime.labels.length > 0) {
+                    labels = fromTime.labels;
+                    predicted = fromTime.predicted;
+                }
             }
 
             if (items && items.length > 0 && labels.length > 0) {
@@ -1566,6 +2785,9 @@
 
         // 현재 물때 정보 가져오기
         const mulddae = getMulddaeInfo(getDateStr());
+        if (Number.isFinite(window._lastMulddaePct)) {
+            mulddae.pct = window._lastMulddaePct;
+        }
         // 통합 판정 함수 사용 — 임계값은 SPECIES_RULES에서 한 곳 관리
         const speciesTips = {
             jjukkumi: {
@@ -1902,32 +3124,83 @@
     async function fetchCurrentData() {
         const infoEl = document.getElementById('currentInfo');
         const cStation = getCurrentStation();
+        const dateStr = getDateStr();
+        const stationCode = getStation();
         if (!cStation) {
             infoEl.innerHTML = '<div class="error-msg">이 지역에는 조류 예보점이 없습니다.</div>';
             renderCurrentChart([]);
+            renderMulddaeCardFromState();
             return;
         }
         infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>조류 데이터 로딩...</div></div>';
 
         try {
+            requestCurrentFlowStatsPrime(cStation, dateStr, true);
             const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
                 obsCode: cStation,
-                reqDate: getDateStr(),
+                reqDate: dateStr,
                 numOfRows: '300',
                 pageNo: '1'
             });
 
-            if (!items || items.length === 0) {
-                infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
-                renderCurrentChart([]); return;
+            let fldEbbSummary = null;
+            try {
+                const fldEbbItems = await apiCall('crntFcstFldEbb/GetCrntFcstFldEbbApiService', {
+                    obsCode: cStation,
+                    reqDate: dateStr,
+                    numOfRows: '20',
+                    pageNo: '1'
+                });
+                fldEbbSummary = parseFldEbbSummary(fldEbbItems);
+            } catch(e) {
+                // 창/낙조 API 실패 시 표/차트는 기본 데이터로 계속 표시
             }
 
+            let areaSummary = null;
+            try {
+                const geo = getActiveGeoPoint(stationCode);
+                if (geo) {
+                    const bounds = getKhoaAreaBounds(geo.lat, geo.lon);
+                    const t = getKhoaAreaQueryTime(dateStr);
+                    const areaRaw = await apiCallRaw('/api/khoa/current-area', {
+                        date: dateStr,
+                        hour: t.hour,
+                        minute: t.minute,
+                        minX: bounds.minX,
+                        maxX: bounds.maxX,
+                        minY: bounds.minY,
+                        maxY: bounds.maxY,
+                        scale: '400000'
+                    });
+                    areaSummary = parseKhoaAreaSummary(areaRaw);
+                    if (areaSummary) {
+                        areaSummary.timeLabel = t.label;
+                        areaSummary.areaName = geo.name;
+                    }
+                }
+            } catch(e) {
+                // 면조류 실패 시 기본 조류 정보만 표시
+            }
+
+            if (!items || items.length === 0) {
+                infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
+                renderCurrentChart([]);
+                renderMulddaeCardFromState();
+                return;
+            }
+
+            const flowSnapshot = buildCurrentFlowSnapshot(items, cStation, dateStr);
+            if (flowSnapshot) {
+                setCurrentFlowSnapshot(cStation, dateStr, flowSnapshot);
+            }
             const filtered = items.filter((_, idx) => idx % 10 === 0);
-            renderCurrentTable(filtered, infoEl);
+            renderCurrentTable(filtered, infoEl, fldEbbSummary, areaSummary);
             renderCurrentChart(filtered);
+            renderMulddaeCardFromState();
         } catch(e) {
             infoEl.innerHTML = `<div class="error-msg">조류 오류: ${escapeHTML(e.message)}</div>`;
             renderCurrentChart([]);
+            renderMulddaeCardFromState();
         }
     }
 
@@ -1939,15 +3212,33 @@
         return '#4ecdc4';
     }
 
-    function renderCurrentTable(items, el) {
+    function renderCurrentTable(items, el, fldEbbSummary = null, areaSummary = null) {
         if (!items || items.length === 0) return;
         const speeds = items.map(i => parseFloat(i.crsp) || 0);
         const maxSpeed = speeds.length > 0 ? Math.max(...speeds, 1) : 1;
+        const fldText = fldEbbSummary && fldEbbSummary.fldTime ? fldEbbSummary.fldTime : '-';
+        const ebbText = fldEbbSummary && fldEbbSummary.ebbTime ? fldEbbSummary.ebbTime : '-';
+        const fldSpdText = fldEbbSummary && Number.isFinite(fldEbbSummary.fldSpeed) ? ` (${fldEbbSummary.fldSpeed.toFixed(1)}cm/s)` : '';
+        const ebbSpdText = fldEbbSummary && Number.isFinite(fldEbbSummary.ebbSpeed) ? ` (${fldEbbSummary.ebbSpeed.toFixed(1)}cm/s)` : '';
+        const fldEbbLine = (fldEbbSummary && (fldEbbSummary.fldTime || fldEbbSummary.ebbTime))
+            ? ` · 창/낙조 ${fldText}${fldSpdText} / ${ebbText}${ebbSpdText}`
+            : '';
+        const areaUnit = areaSummary && areaSummary.unit ? areaSummary.unit : '';
+        const areaAvgText = areaSummary && Number.isFinite(areaSummary.avgSpeed)
+            ? `${areaSummary.avgSpeed.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            : '-';
+        const areaMaxText = areaSummary && Number.isFinite(areaSummary.maxSpeed)
+            ? `${areaSummary.maxSpeed.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            : '-';
+        const areaDirText = areaSummary && areaSummary.dirText ? ` ${areaSummary.dirText}` : '';
+        const areaLine = areaSummary
+            ? ` · 면조류 ${escapeHTML(areaSummary.areaName || '')} ${escapeHTML(areaSummary.timeLabel || '')} 평균 ${areaAvgText} / 최대 ${areaMaxText}${areaDirText} (n=${areaSummary.sampleCount})`
+            : '';
 
         el.innerHTML = `
             <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
                 예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong> ·
-                총 ${items.length}건 (10분 간격)
+                총 ${items.length}건 (10분 간격)${fldEbbLine}${areaLine}
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
