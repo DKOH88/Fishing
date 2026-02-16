@@ -1268,7 +1268,7 @@
                 annotations['hl_time_' + idx] = {
                     type: 'label', xValue: nearIdx,
                     yValue: isHigh ? item.predcTdlvVl : _dataMin,
-                    yAdjust: isHigh ? -21 : 24,
+                    yAdjust: isHigh ? -16 : 24,
                     content: time,
                     color: isHigh ? '#ff6b6b' : '#4ecdc4',
                     font: { size: 10, weight: '600' },
@@ -1632,12 +1632,31 @@
             });
         }
 
+        const _pValid = predicted.filter(v => v != null);
+        const _annYValues = Object.values(annotations)
+            .map(a => (a && typeof a.yValue === 'number') ? a.yValue : null)
+            .filter(v => v != null);
+        const _yAll = _pValid.concat(_annYValues);
+
+        const yScale = {
+            ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
+            grid: { color: 'rgba(255,255,255,0.06)' }
+        };
+        if (_yAll.length > 0) {
+            const _yMinAuto = Math.min(..._yAll);
+            const _yMaxAuto = Math.max(..._yAll);
+            const _yRange = Math.max(1, _yMaxAuto - _yMinAuto);
+            const _yPad = Math.max(20, _yRange * 0.12);
+            yScale.min = _yMinAuto - _yPad;
+            yScale.max = _yMaxAuto + _yPad;
+        } else {
+            yScale.grace = '12%';
+        }
+
         const scales = {
             x: { ticks: { color: '#7a8ba3', maxTicksLimit: 24, font: { size: 10 }, callback: function(val, idx) { const lbl = this.getLabelForValue(val); return lbl && lbl.endsWith(':00') ? lbl : null; } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-            y: { grace: '8%', ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+            y: yScale
         };
-
-        const _pValid = predicted.filter(v => v != null);
         if (activeSpecies === 'gapoh' && _pValid.length > 0) {
             const yMax = Math.max(..._pValid);
             const yMin = Math.min(..._pValid);
@@ -1991,4 +2010,5 @@
     </script>
 </body>
 </html>
+
 
