@@ -1469,7 +1469,10 @@
         if (!items || items.length === 0 || !/^\d{8}$/.test(dateStr || '')) return null;
         const datePrefix = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
         const dayItems = items.filter(i => i.predcDt && String(i.predcDt).startsWith(datePrefix));
-        const src = dayItems.length > 0 ? dayItems : items;
+        const src = dayItems.filter((item) => {
+            const t = extractCurrentTimeLabel(item);
+            return !!t && t >= '05:00' && t <= '18:00';
+        });
 
         const speeds = [];
         for (const item of src) {
@@ -1485,7 +1488,7 @@
             pct,
             maxSpeed,
             sampleCount: speeds.length,
-            obsvtrNm: String(src[0]?.obsvtrNm || ''),
+            obsvtrNm: String((src[0] || dayItems[0] || items[0])?.obsvtrNm || ''),
             updatedAt: new Date().toISOString(),
         };
     }
@@ -1531,6 +1534,7 @@
         const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
 
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
+        const pctText = pctValue != null ? `${pctValue}%` : '-';
         const fishingInfo = (window._fishingIndexInfo && window._fishingIndexInfo.reqDate === dateStr)
             ? window._fishingIndexInfo
             : null;
@@ -1560,8 +1564,8 @@
                 </div>
                 <div class="mulddae-pct-wrap">
                     <div class="mulddae-pct-head">
-                        <span class="mulddae-pct-label-inline">물 흐름</span>
-                        <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctValue != null ? `${pctValue}%` : '-'}</span>
+                        <span class="mulddae-pct-label-inline">오늘의 유속 (05:00~18:00 기준)</span>
+                        <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctText}</span>
                     </div>
                     <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${mulddae.color};"></div></div>
                 </div>
