@@ -112,11 +112,9 @@
         .mulddae-badge .mulddae-num { font-size: 1.1em; }
         .mulddae-pct-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 4px; flex: 1; min-width: 0; }
         .mulddae-pct-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .mulddae-pct-source { flex: 1; min-width: 0; font-size: 0.7em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .mulddae-pct-value-wrap { display: inline-flex; align-items: baseline; gap: 6px; flex-shrink: 0; }
         .mulddae-pct-label-inline { color: var(--muted); font-size: 0.82em; }
         .mulddae-pct-value { font-weight: 700; font-size: 0.95em; }
-        .mulddae-pct-meta { font-size: 0.72em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .mulddae-pct-bar { display: block; width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
         .mulddae-pct-bar-fill { height: 100%; border-radius: 4px; }
         .mulddae-desc { font-size: 0.85em; color: var(--muted); }
@@ -152,8 +150,6 @@
             .mulddae-badge .mulddae-moon { width: 1.56em; height: 1.56em; }
             .mulddae-badge .mulddae-num { font-size: 1em; }
             .mulddae-desc { font-size: 0.8em; }
-            .mulddae-pct-meta { font-size: 0.68em; }
-            .mulddae-pct-source { font-size: 0.66em; }
             .mulddae-pct-label-inline { font-size: 0.76em; }
             .tide-data-stamp { font-size: 0.68em; }
             .tab-btn { padding: 8px 14px; font-size: 0.85em; }
@@ -1534,45 +1530,11 @@
             : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
         const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
 
-        const rangePctValue = Number.isFinite(rangePct) ? clamp(Math.round(rangePct), 0, 100) : null;
-        const rangePctText = rangePctValue != null ? `${rangePctValue}%` : '-';
-        const currentPctValue = (currentSnap && Number.isFinite(currentSnap.pct))
-            ? clamp(Math.round(currentSnap.pct), 0, 100)
-            : null;
-        const currentWeightPct = Number.isFinite(flowDecision.currentWeight)
-            ? clamp(Math.round(flowDecision.currentWeight * 100), 0, 100)
-            : null;
-        const rangeWeightPct = Number.isFinite(flowDecision.rangeWeight)
-            ? clamp(Math.round(flowDecision.rangeWeight * 100), 0, 100)
-            : null;
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
         const fishingInfo = (window._fishingIndexInfo && window._fishingIndexInfo.reqDate === dateStr)
             ? window._fishingIndexInfo
             : null;
         let fishingText = '';
-        let flowMetaText = '';
-        if (pctValue == null) {
-            flowMetaText = '계산식: 데이터 계산 중';
-        } else if ((flowDecision.mode === 'hybrid' || flowDecision.mode === 'currentWeighted')
-            && currentPctValue != null && rangePctValue != null
-            && currentWeightPct != null && rangeWeightPct != null) {
-            flowMetaText = `계산식: 유속 ${currentPctValue}% x ${currentWeightPct}% + 조차 ${rangePctValue}% x ${rangeWeightPct}% = ${pctValue}%`;
-        } else if (flowDecision.mode === 'current') {
-            flowMetaText = `계산식: 유속 ${currentPctValue != null ? currentPctValue : '-'}% 단독 = ${pctValue}%`;
-        } else {
-            flowMetaText = `계산식: 조차 ${rangePctValue != null ? rangePctValue : '-'}% 단독 = ${pctValue}%`;
-        }
-        let flowUpdatedText = '-';
-        if (currentSnap && currentSnap.updatedAt) {
-            const ts = Date.parse(currentSnap.updatedAt);
-            if (Number.isFinite(ts)) {
-                const d = new Date(ts);
-                const hh = String(d.getHours()).padStart(2, '0');
-                const mm = String(d.getMinutes()).padStart(2, '0');
-                flowUpdatedText = `${hh}:${mm}`;
-            }
-        }
-        const flowSourceText = `자료제공=국립해양조사원 | 업데이트 시간:${flowUpdatedText}`;
 
         if (fishingInfo) {
             const scoreText = Number.isFinite(fishingInfo.totalScore)
@@ -1598,14 +1560,10 @@
                 </div>
                 <div class="mulddae-pct-wrap">
                     <div class="mulddae-pct-head">
-                        <span class="mulddae-pct-source">${flowSourceText}</span>
-                        <span class="mulddae-pct-value-wrap">
-                            <span class="mulddae-pct-label-inline">물 흐름</span>
-                            <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctValue != null ? `${pctValue}%` : '-'}</span>
-                        </span>
+                        <span class="mulddae-pct-label-inline">물 흐름</span>
+                        <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctValue != null ? `${pctValue}%` : '-'}</span>
                     </div>
                     <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${mulddae.color};"></div></div>
-                    <div class="mulddae-pct-meta">${flowMetaText}</div>
                 </div>
             </div>
             <div class="mulddae-desc">${desc}</div>
