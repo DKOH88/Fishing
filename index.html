@@ -46,6 +46,7 @@
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
         .card-title { font-size: 1em; color: var(--primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .tide-data-stamp { margin-top: -8px; margin-bottom: 10px; font-size: 0.72em; color: var(--muted); letter-spacing: 0.02em; }
         .tide-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
         .tide-item { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 14px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
         .tide-item.high { border-left: 3px solid var(--high); }
@@ -109,8 +110,14 @@
         .mulddae-badge .mulddae-emoji { font-size: 1.3em; line-height: 1; }
         .mulddae-badge .mulddae-moon { width: 1.86em; height: 1.86em; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
         .mulddae-badge .mulddae-num { font-size: 1.1em; }
-        .mulddae-pct-wrap { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
-        .mulddae-pct-bar { display: inline-block; width: 80px; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; vertical-align: middle; flex-shrink: 0; }
+        .mulddae-pct-wrap { display: flex; flex-direction: column; align-items: stretch; gap: 4px; flex: 1; min-width: 0; }
+        .mulddae-pct-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .mulddae-pct-source { flex: 1; min-width: 0; font-size: 0.7em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mulddae-pct-value-wrap { display: inline-flex; align-items: baseline; gap: 6px; flex-shrink: 0; }
+        .mulddae-pct-label-inline { color: var(--muted); font-size: 0.82em; }
+        .mulddae-pct-value { font-weight: 700; font-size: 0.95em; }
+        .mulddae-pct-meta { font-size: 0.72em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mulddae-pct-bar { display: block; width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
         .mulddae-pct-bar-fill { height: 100%; border-radius: 4px; }
         .mulddae-desc { font-size: 0.85em; color: var(--muted); }
         .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -145,6 +152,10 @@
             .mulddae-badge .mulddae-moon { width: 1.56em; height: 1.56em; }
             .mulddae-badge .mulddae-num { font-size: 1em; }
             .mulddae-desc { font-size: 0.8em; }
+            .mulddae-pct-meta { font-size: 0.68em; }
+            .mulddae-pct-source { font-size: 0.66em; }
+            .mulddae-pct-label-inline { font-size: 0.76em; }
+            .tide-data-stamp { font-size: 0.68em; }
             .tab-btn { padding: 8px 14px; font-size: 0.85em; }
             .btn { padding: 8px 16px; font-size: 0.88em; }
             .sun-row { font-size: 0.9em; }
@@ -220,7 +231,7 @@
         <!-- Tabs -->
         <div class="tabs">
             <button class="tab-btn active" data-tab="tide">물때/조위</button>
-            <button class="tab-btn" data-tab="current">조류</button>
+            <button class="tab-btn" data-tab="current">조류 유속</button>
         </div>
 
         <!-- Tide Tab -->
@@ -232,6 +243,7 @@
             </div>
             <div class="card" id="tideSummaryCard">
                 <div class="card-title">📊 고저조 정보</div>
+                <div id="tideDataStamp" class="tide-data-stamp">예보 생성시각 - · 실측 반영시각 -</div>
                 <div id="tideSummary"><div style="text-align:center;color:var(--muted);padding:20px;">관측소와 날짜를 선택 후 조회하세요</div></div>
             </div>
             <div class="card">
@@ -1522,46 +1534,45 @@
             : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
         const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
 
-        const rangePctText = Number.isFinite(rangePct) ? `${Math.round(rangePct)}%` : '-';
-        const diffText = Number.isFinite(diff) ? ` · 조차 ${Math.round(diff)}cm` : '';
-        const leadText = flowDecision.policy ? formatFlowLeadText(flowDecision.policy.daysAhead) : '';
-        const speedText = (currentSnap && Number.isFinite(currentSnap.maxSpeed)) ? `${currentSnap.maxSpeed.toFixed(1)}cm/s` : '-';
-        const obsName = currentSnap && currentSnap.obsvtrNm ? escapeHTML(currentSnap.obsvtrNm) : '';
-        const obsFlowText = obsName ? `${obsName} ${speedText}` : speedText;
-        const currentWeightPct = Number.isFinite(flowDecision.currentWeight) ? Math.round(flowDecision.currentWeight * 100) : null;
-        const rangeWeightPct = Number.isFinite(flowDecision.rangeWeight) ? Math.round(flowDecision.rangeWeight * 100) : null;
-        const badgeText = flowDecision.sourceLabel || '조차기반';
-        const tuningText = flowDecision.policy?.tuned ? '항만튜닝' : '';
+        const rangePctValue = Number.isFinite(rangePct) ? clamp(Math.round(rangePct), 0, 100) : null;
+        const rangePctText = rangePctValue != null ? `${rangePctValue}%` : '-';
+        const currentPctValue = (currentSnap && Number.isFinite(currentSnap.pct))
+            ? clamp(Math.round(currentSnap.pct), 0, 100)
+            : null;
+        const currentWeightPct = Number.isFinite(flowDecision.currentWeight)
+            ? clamp(Math.round(flowDecision.currentWeight * 100), 0, 100)
+            : null;
+        const rangeWeightPct = Number.isFinite(flowDecision.rangeWeight)
+            ? clamp(Math.round(flowDecision.rangeWeight * 100), 0, 100)
+            : null;
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
         const fishingInfo = (window._fishingIndexInfo && window._fishingIndexInfo.reqDate === dateStr)
             ? window._fishingIndexInfo
             : null;
-        let subText = '';
         let fishingText = '';
-
-        if (flowDecision.mode === 'hybrid' || flowDecision.mode === 'currentWeighted') {
-            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
-            const weightText = (currentWeightPct != null && rangeWeightPct != null)
-                ? `유속 ${currentWeightPct}% + 조차 ${rangeWeightPct}%`
-                : '';
-            subText = [leadPolicyText, weightText, obsFlowText, `조차강도 ${rangePctText}${diffText}`]
-                .filter(Boolean)
-                .join(' · ');
+        let flowMetaText = '';
+        if (pctValue == null) {
+            flowMetaText = '계산식: 데이터 계산 중';
+        } else if ((flowDecision.mode === 'hybrid' || flowDecision.mode === 'currentWeighted')
+            && currentPctValue != null && rangePctValue != null
+            && currentWeightPct != null && rangeWeightPct != null) {
+            flowMetaText = `계산식: 유속 ${currentPctValue}% x ${currentWeightPct}% + 조차 ${rangePctValue}% x ${rangeWeightPct}% = ${pctValue}%`;
         } else if (flowDecision.mode === 'current') {
-            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
-            subText = [leadPolicyText, `유속기반 ${obsFlowText}`, `조차강도 ${rangePctText}${diffText}`]
-                .filter(Boolean)
-                .join(' · ');
-        } else if (flowDecision.mode === 'range') {
-            const leadPolicyText = [leadText, flowDecision.policy?.label, tuningText].filter(Boolean).join(' ');
-            subText = [leadPolicyText, `조차강도 ${rangePctText}${diffText}`]
-                .filter(Boolean)
-                .join(' · ');
-        } else if (!currentCode) {
-            subText = `조류예보점 없음 · 조차강도 ${rangePctText}${diffText}`;
+            flowMetaText = `계산식: 유속 ${currentPctValue != null ? currentPctValue : '-'}% 단독 = ${pctValue}%`;
         } else {
-            subText = `유속/조차 데이터 계산 중`;
+            flowMetaText = `계산식: 조차 ${rangePctValue != null ? rangePctValue : '-'}% 단독 = ${pctValue}%`;
         }
+        let flowUpdatedText = '-';
+        if (currentSnap && currentSnap.updatedAt) {
+            const ts = Date.parse(currentSnap.updatedAt);
+            if (Number.isFinite(ts)) {
+                const d = new Date(ts);
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                flowUpdatedText = `${hh}:${mm}`;
+            }
+        }
+        const flowSourceText = `자료제공=국립해양조사원 | 업데이트 시간:${flowUpdatedText}`;
 
         if (fishingInfo) {
             const scoreText = Number.isFinite(fishingInfo.totalScore)
@@ -1586,9 +1597,15 @@
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
                 <div class="mulddae-pct-wrap">
-                    <span style="color:var(--muted);font-size:0.85em;">물흐름</span>
+                    <div class="mulddae-pct-head">
+                        <span class="mulddae-pct-source">${flowSourceText}</span>
+                        <span class="mulddae-pct-value-wrap">
+                            <span class="mulddae-pct-label-inline">물 흐름</span>
+                            <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctValue != null ? `${pctValue}%` : '-'}</span>
+                        </span>
+                    </div>
                     <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${mulddae.color};"></div></div>
-                    <span style="color:${mulddae.color};font-weight:600;font-size:0.9em;">${pctValue != null ? `${pctValue}%` : '-'}</span>
+                    <div class="mulddae-pct-meta">${flowMetaText}</div>
                 </div>
             </div>
             <div class="mulddae-desc">${desc}</div>
@@ -1804,6 +1821,7 @@
     async function fetchTideHighLow() {
         const summaryEl = document.getElementById('tideSummary');
         summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
+        setTideDataStamp('예보 생성시각 조회 중 · 실측 반영시각 조회 중');
 
         try {
             const stationCode = getStation();
@@ -1821,18 +1839,19 @@
                 numOfRows: '50',
                 pageNo: '1'
             }).then(parseDeviationText).catch(() => '');
-            const lsTermObsPromise = apiCall('lsTermTideObs/GetLsTermTideObsApiService', {
+            const lsTermObsItemsPromise = apiCall('lsTermTideObs/GetLsTermTideObsApiService', {
                 obsCode: stationCode,
                 reqDate: dateStr,
                 numOfRows: '24',
                 pageNo: '1'
-            }).then(parseLsTermObsText).catch(() => '');
+            }).catch(() => []);
             const harmonicsPromise = apiCallRaw('/api/khoa/tide-harmonics', {
                 obsCode: stationCode
             }).then(parseTideHarmonicsText).catch(() => '');
             const fishingPromise = fetchFishingIndexInfo(stationCode, dateStr).catch(() => null);
 
             if (!items || items.length === 0) {
+                setTideDataStamp('예보 생성시각 - · 실측 반영시각 -');
                 summaryEl.innerHTML = '<div class="error-msg">데이터가 없습니다.</div>';
                 return;
             }
@@ -1866,12 +1885,14 @@
                 rangePct
             };
             renderMulddaeCardFromState();
-            const [deviationText, lsTermObsText, harmonicsText, fishingInfo] = await Promise.all([
+            const [deviationText, lsTermObsItems, harmonicsText, fishingInfo] = await Promise.all([
                 deviationPromise,
-                lsTermObsPromise,
+                lsTermObsItemsPromise,
                 harmonicsPromise,
                 fishingPromise
             ]);
+            const lsTermObsText = parseLsTermObsText(lsTermObsItems);
+            setTideDataStamp(buildTideDataStampText(items, lsTermObsItems, dateStr));
             window._fishingIndexInfo = fishingInfo;
             renderMulddaeCardFromState();
             // 일출/일몰 계산
@@ -1898,6 +1919,7 @@
 
             window._hlData = displayItems;
         } catch(e) {
+            setTideDataStamp('예보 생성시각 - · 실측 반영시각 -');
             summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${escapeHTML(e.message)}</div>`;
         }
     }
@@ -1959,13 +1981,160 @@
         let m = s.match(/(\d{2}):(\d{2})/);
         if (m) return `${m[1]}:${m[2]}`;
 
+        // YYYYMMDDHHMM[SS] 형태
+        m = s.match(/(?:^|\D)\d{8}(\d{2})(\d{2})(?:\d{2})?(?:\D|$)/);
+        if (m) return `${m[1]}:${m[2]}`;
+
+        // HHMM 형태(다른 숫자열 사이가 아닌 토큰)
         m = s.match(/(?:^|\D)(\d{2})(\d{2})(?:\D|$)/);
+        if (m) return `${m[1]}:${m[2]}`;
+
+        // ...HHMM 으로 끝나는 긴 숫자열 fallback
+        m = s.match(/(\d{2})(\d{2})(?:\d{2})?$/);
         if (m) return `${m[1]}:${m[2]}`;
 
         const short = s.match(/^(\d{1,2}):(\d{2})$/);
         if (short) return `${String(parseInt(short[1], 10)).padStart(2, '0')}:${short[2]}`;
 
         return null;
+    }
+
+    function extractCurrentTimeLabel(item) {
+        if (!item || typeof item !== 'object') return null;
+
+        const direct = normalizeClockTime(extractByKeysCaseInsensitive(item, [
+            'predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime', 'obsrvnDt'
+        ]));
+        if (direct) return direct;
+
+        const keys = Object.keys(item);
+        for (const k of keys) {
+            const lk = k.toLowerCase();
+            if (!(lk.includes('pred') || lk.includes('obs'))) continue;
+            if (!(lk.includes('dt') || lk.endsWith('tm') || lk.includes('time'))) continue;
+            const t = normalizeClockTime(item[k]);
+            if (t) return t;
+        }
+        for (const k of keys) {
+            const lk = k.toLowerCase();
+            if (!(lk.includes('dt') || lk.endsWith('tm') || lk.includes('time'))) continue;
+            const t = normalizeClockTime(item[k]);
+            if (t) return t;
+        }
+        return null;
+    }
+
+    function dedupeCurrentItems(items) {
+        const seen = new Set();
+        const out = [];
+        (items || []).forEach((item, idx) => {
+            const t = extractCurrentTimeLabel(item);
+            const s = toFiniteNumber(extractByKeysCaseInsensitive(item, ['crsp', 'speed', 'spd']));
+            const d = extractByKeysCaseInsensitive(item, ['crdir', 'direction', 'dir']) || '';
+            const key = t
+                ? `${t}|${Number.isFinite(s) ? s.toFixed(3) : ''}|${String(d)}`
+                : `idx:${idx}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            out.push(item);
+        });
+        return out;
+    }
+
+    function parseDateTimeToken(raw, fallbackDateStr = '') {
+        if (raw == null) return null;
+        const s = String(raw).trim();
+        if (!s) return null;
+
+        let m = s.match(/(\d{4})[-./]?(\d{2})[-./]?(\d{2})[ T]?(\d{2}):?(\d{2})(?::?(\d{2}))?/);
+        if (m) {
+            const y = m[1];
+            const mo = m[2];
+            const d = m[3];
+            const h = m[4];
+            const mi = m[5];
+            const sec = m[6] || '00';
+            return {
+                sortKey: Number(`${y}${mo}${d}${h}${mi}${sec}`),
+                dateLabel: `${y}.${mo}.${d}`,
+                timeLabel: `${h}:${mi}`,
+                fullLabel: `${y}.${mo}.${d} ${h}:${mi}`
+            };
+        }
+
+        m = s.match(/(?:^|\D)(\d{8})(\d{4})(\d{0,2})(?:\D|$)/);
+        if (m) {
+            const ymd = m[1];
+            const hm = m[2];
+            const sec = (m[3] || '00').padStart(2, '0');
+            const y = ymd.substring(0, 4);
+            const mo = ymd.substring(4, 6);
+            const d = ymd.substring(6, 8);
+            const h = hm.substring(0, 2);
+            const mi = hm.substring(2, 4);
+            return {
+                sortKey: Number(`${y}${mo}${d}${h}${mi}${sec}`),
+                dateLabel: `${y}.${mo}.${d}`,
+                timeLabel: `${h}:${mi}`,
+                fullLabel: `${y}.${mo}.${d} ${h}:${mi}`
+            };
+        }
+
+        const t = normalizeClockTime(s);
+        if (t && /^\d{8}$/.test(fallbackDateStr || '')) {
+            const y = fallbackDateStr.substring(0, 4);
+            const mo = fallbackDateStr.substring(4, 6);
+            const d = fallbackDateStr.substring(6, 8);
+            const h = t.substring(0, 2);
+            const mi = t.substring(3, 5);
+            return {
+                sortKey: Number(`${y}${mo}${d}${h}${mi}00`),
+                dateLabel: `${y}.${mo}.${d}`,
+                timeLabel: `${h}:${mi}`,
+                fullLabel: `${y}.${mo}.${d} ${h}:${mi}`
+            };
+        }
+        return null;
+    }
+
+    function pickLatestDateTimeFromItems(items, keys, fallbackDateStr = '') {
+        if (!items || items.length === 0) return null;
+        let best = null;
+        for (const item of items) {
+            const raw = extractByKeysCaseInsensitive(item, keys);
+            const parsed = parseDateTimeToken(raw, fallbackDateStr);
+            if (!parsed) continue;
+            if (!best || parsed.sortKey > best.sortKey) best = parsed;
+        }
+        return best;
+    }
+
+    function buildTideDataStampText(hlItems, lsTermItems, dateStr) {
+        const forecastRef = pickLatestDateTimeFromItems(
+            lsTermItems,
+            ['predcDt', 'predcTm', 'predcTime', 'baseTime', 'tm'],
+            dateStr
+        ) || pickLatestDateTimeFromItems(
+            hlItems,
+            ['predcDt', 'predcTm', 'predcTime', 'tm'],
+            dateStr
+        );
+
+        const observedRef = pickLatestDateTimeFromItems(
+            lsTermItems,
+            ['obsrvnDt', 'obsrvnTm', 'obsrvnTime', 'tm'],
+            dateStr
+        );
+
+        const forecastText = forecastRef ? forecastRef.timeLabel : '-';
+        const observedText = observedRef ? observedRef.timeLabel : '-';
+        return `예보 생성시각 ${forecastText} · 실측 반영시각 ${observedText}`;
+    }
+
+    function setTideDataStamp(text) {
+        const el = document.getElementById('tideDataStamp');
+        if (!el) return;
+        el.textContent = text || '예보 생성시각 - · 실측 반영시각 -';
     }
 
     function extractByKeysCaseInsensitive(obj, keys) {
@@ -3134,11 +3303,13 @@
 
         try {
             requestCurrentFlowStatsPrime(cStation, dateStr, true);
-            const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+            const firstPageItems = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
                 obsCode: cStation,
                 reqDate: dateStr,
+                // crntFcstTime는 1페이지당 300건 기준으로 페이지네이션하는 것이 가장 안정적이다.
                 numOfRows: '300',
-                pageNo: '1'
+                pageNo: '1',
+                min: '10'
             });
 
             let fldEbbSummary = null;
@@ -3180,18 +3351,71 @@
                 // 면조류 실패 시 기본 조류 정보만 표시
             }
 
-            if (!items || items.length === 0) {
+            if (!firstPageItems || firstPageItems.length === 0) {
                 infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
                 renderCurrentChart([]);
                 renderMulddaeCardFromState();
                 return;
             }
 
-            const flowSnapshot = buildCurrentFlowSnapshot(items, cStation, dateStr);
+            let mergedItems = Array.isArray(firstPageItems) ? [...firstPageItems] : [];
+            let timeTaggedItems = mergedItems.map((item) => ({ ...item, __timeLabel: extractCurrentTimeLabel(item) }));
+            let withTimeItems = timeTaggedItems.filter((item) => !!item.__timeLabel);
+            let timeFiltered = withTimeItems.filter((item) => (
+                item.__timeLabel >= '05:00' && item.__timeLabel <= '18:00'
+            ));
+
+            // 페이지 1에 05~18시 구간이 없으면 추가 페이지 조회 후 병합 재시도
+            if (timeFiltered.length === 0) {
+                const extraPages = ['2', '3', '4', '5'];
+                const extraResults = await Promise.all(extraPages.map((pageNo) => (
+                    apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+                        obsCode: cStation,
+                        reqDate: dateStr,
+                        numOfRows: '300',
+                        pageNo,
+                        min: '10'
+                    }).catch(() => [])
+                )));
+
+                extraResults.forEach((chunk) => {
+                    if (Array.isArray(chunk) && chunk.length > 0) mergedItems.push(...chunk);
+                });
+                mergedItems = dedupeCurrentItems(mergedItems);
+                timeTaggedItems = mergedItems.map((item) => ({ ...item, __timeLabel: extractCurrentTimeLabel(item) }));
+                withTimeItems = timeTaggedItems.filter((item) => !!item.__timeLabel);
+                timeFiltered = withTimeItems.filter((item) => (
+                    item.__timeLabel >= '05:00' && item.__timeLabel <= '18:00'
+                ));
+            }
+
+            const flowSnapshot = buildCurrentFlowSnapshot(mergedItems, cStation, dateStr);
             if (flowSnapshot) {
                 setCurrentFlowSnapshot(cStation, dateStr, flowSnapshot);
             }
-            const filtered = items.filter((_, idx) => idx % 10 === 0);
+            if (timeFiltered.length === 0) {
+                if (withTimeItems.length === 0) {
+                    const fallback = mergedItems.filter((_, idx) => idx % 10 === 0);
+                    renderCurrentTable(fallback, infoEl, fldEbbSummary, areaSummary);
+                    renderCurrentChart(fallback);
+                    renderMulddaeCardFromState();
+                    return;
+                }
+                infoEl.innerHTML = '<div class="error-msg">05:00~18:00 범위 조류 데이터가 없습니다.</div>';
+                renderCurrentChart([]);
+                renderMulddaeCardFromState();
+                return;
+            }
+
+            const tenMinuteFiltered = timeFiltered.filter((item) => {
+                const time = item.__timeLabel || extractCurrentTimeLabel(item);
+                if (!time) return false;
+                const mm = parseInt(time.substring(3, 5), 10);
+                return Number.isFinite(mm) && (mm % 10 === 0);
+            });
+            const filtered = tenMinuteFiltered.length > 0
+                ? tenMinuteFiltered
+                : timeFiltered.filter((_, idx) => idx % 10 === 0);
             renderCurrentTable(filtered, infoEl, fldEbbSummary, areaSummary);
             renderCurrentChart(filtered);
             renderMulddaeCardFromState();
@@ -3243,7 +3467,7 @@
                 <thead><tr><th>시간</th><th>유향</th><th>유속 (cm/s)</th><th>세기</th></tr></thead>
                 <tbody>
                     ${items.map(item => {
-                        const time = item.predcDt ? item.predcDt.substring(11, 16) : '-';
+                        const time = item.__timeLabel || extractCurrentTimeLabel(item) || '-';
                         const speed = parseFloat(item.crsp) || 0;
                         const pct = (speed / maxSpeed) * 100;
                         const color = getSpeedColor(speed);
@@ -3266,7 +3490,7 @@
         if (currentChart) currentChart.destroy();
         if (!items || items.length === 0) { currentChart = null; return; }
 
-        const labels = items.map(i => i.predcDt ? i.predcDt.substring(11, 16) : '-');
+        const labels = items.map(i => i.__timeLabel || extractCurrentTimeLabel(i) || '-');
         const speeds = items.map(i => parseFloat(i.crsp) || 0);
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
