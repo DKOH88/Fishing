@@ -1640,17 +1640,14 @@
 
         const yScale = {
             min: 0,
-            ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
+            ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
             grid: { color: 'rgba(255,255,255,0.06)' }
         };
         if (_yAll.length > 0) {
-            const _yMinAuto = Math.min(..._yAll);
             const _yMaxAuto = Math.max(..._yAll);
-            const _yRange = Math.max(1, _yMaxAuto - _yMinAuto);
-            const _yPad = Math.max(20, _yRange * 0.12);
-            yScale.max = _yMaxAuto + _yPad;
+            yScale.max = Math.max(100, Math.ceil(_yMaxAuto / 100) * 100);
         } else {
-            yScale.grace = '12%';
+            yScale.max = 100;
         }
 
         const scales = {
@@ -2010,6 +2007,7 @@
     </script>
 </body>
 </html>
+
 
 
 
