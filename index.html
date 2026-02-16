@@ -1240,8 +1240,8 @@
 
             const _fValid = fPredicted.filter(v => v != null);
             const _dataMin = _fValid.length > 0 ? Math.min(..._fValid) : 0;
-            const _lowTimeLabelBase = _dataMin < 70 ? 70 : _dataMin;
-            const _lowTimeLabelAdjust = _dataMin < 70 ? 10 : 24;
+            const _lowTimeLabelBase = _dataMin <= 70 ? 70 : _dataMin;
+            const _lowTimeLabelAdjust = _dataMin <= 70 ? 17 : 24;
             let annotations = {};
             hlData.forEach((item, idx) => {
                 const time = item.predcDt.substring(11, 16);
@@ -2009,6 +2009,7 @@
     </script>
 </body>
 </html>
+
 
 
 
