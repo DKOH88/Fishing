@@ -224,7 +224,7 @@
         <!-- Tide Tab -->
         <div class="tab-content active" id="tab-tide">
             <div class="card" id="mulddaeCard" style="display:none;">
-                <div class="card-title" style="flex-wrap:wrap;gap:6px;align-items:center;"><img id="moonPhaseIcon" src="moon/15.webp" alt="달" style="width:1.3em;height:1.3em;vertical-align:middle;border-radius:50%;"> 오늘의 물때 <span id="mulddaeDate" style="font-weight:600;color:var(--text);font-size:0.88em;"></span></div>
+                <div class="card-title" style="flex-wrap:wrap;gap:6px;align-items:center;"><img id="moonPhaseIcon" src="moon/moon/moon_15.png" alt="달" style="width:1.3em;height:1.3em;vertical-align:middle;border-radius:50%;"> 오늘의 물때 <span id="mulddaeDate" style="font-weight:600;color:var(--text);font-size:0.88em;"></span></div>
                 <div id="mulddaeInfo" class="mulddae-card"></div>
                 <div id="mulddaeSpeciesInfo" style="display:none;margin-top:10px;"></div>
             </div>
@@ -774,6 +774,22 @@
         }
     }
 
+    // moon/moon 폴더 파일 순서 기반 월령 아이콘 매핑
+    const MOON_PHASE_IMAGE_DAYS = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23, 24, 25, 26];
+    function getMoonPhaseIconSrc(lunarDay) {
+        const safeDay = (typeof lunarDay === 'number' && lunarDay >= 1 && lunarDay <= 30) ? lunarDay : 1;
+        let nearestDay = MOON_PHASE_IMAGE_DAYS[0];
+        let minDiff = Math.abs(safeDay - nearestDay);
+        for (const day of MOON_PHASE_IMAGE_DAYS) {
+            const diff = Math.abs(safeDay - day);
+            if (diff < minDiff || (diff === minDiff && day > nearestDay)) {
+                minDiff = diff;
+                nearestDay = day;
+            }
+        }
+        return `moon/moon/moon_${String(nearestDay).padStart(2, '0')}.png`;
+    }
+
     function getMulddae(lunarDay) {
         // 바다타임 기준 7물때식 (서해 표준)
         // pct는 기본 추정값 (실제 조차 데이터로 덮어쓸 수 있음)
@@ -1047,9 +1063,13 @@
             const datePrefix = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
             const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
             const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
+            const filteredItems = displayItems.filter(i => {
+                const time = i.predcDt.substring(11, 16);
+                return time >= '05:00' && time <= '18:00';
+            });
 
-            const highs = displayItems.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
-            const lows = displayItems.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
+            const highs = filteredItems.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
+            const lows = filteredItems.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
 
             const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => parseFloat(h.predcTdlvVl))) : null;
             const minLow = lows.length > 0 ? Math.min(...lows.map(l => l.predcTdlvVl)) : null;
@@ -1068,8 +1088,7 @@
             const mulddaeCard = document.getElementById('mulddaeCard');
             mulddaeCard.style.display = '';
             document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
-            const moonDay = mulddae.lunarDay <= 29 ? mulddae.lunarDay : 1;
-            document.getElementById('moonPhaseIcon').src = `moon/${String(moonDay).padStart(2,'0')}.webp`;
+            document.getElementById('moonPhaseIcon').src = getMoonPhaseIconSrc(mulddae.lunarDay);
             const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
                 : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
                 : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
@@ -1098,13 +1117,6 @@
                         <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
                     </div>`).join('')}
                 </div>`;
-
-            // 낚시 시간대 필터: 18:00~05:00 (야간) 고저조 전부 제외
-            const filteredItems = displayItems.filter(i => {
-                const time = i.predcDt.substring(11, 16);
-                return time >= '05:00' && time <= '18:00';
-            });
-
             // 일출/일몰 계산
             const sunTimes = getSunTimesForStation(getDateStr(), getStation());
 
@@ -1123,7 +1135,7 @@
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
                         <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
-                        <div class="time">${diff !== null ? (diff / 100).toFixed(2) + ' m' : '-'}</div>
+                        <div class="time"></div>
                     </div>
                 </div>`;
 
@@ -1224,7 +1236,7 @@
             }
 
             // 05:00~18:00 범위만 필터링
-            const timeFilter = (lbl) => { const h = parseInt(lbl.split(':')[0]); return h >= 5 && h <= 18; };
+            const timeFilter = (lbl) => lbl >= '05:00' && lbl <= '18:00';
             const filterIndices = labels.map((l, i) => timeFilter(l) ? i : -1).filter(i => i >= 0);
             const fLabels = filterIndices.map(i => labels[i]);
             const fPredicted = filterIndices.map(i => predicted[i]);
@@ -1241,7 +1253,7 @@
             const _fValid = fPredicted.filter(v => v != null);
             const _dataMin = _fValid.length > 0 ? Math.min(..._fValid) : 0;
             const _lowTimeLabelBase = _dataMin <= 70 ? 70 : _dataMin;
-            const _lowTimeLabelAdjust = _dataMin <= 70 ? 17 : 24;
+            const _lowTimeLabelAdjust = _dataMin <= 70 ? 21 : 24;
             let annotations = {};
             hlData.forEach((item, idx) => {
                 const time = item.predcDt.substring(11, 16);
@@ -2009,6 +2021,14 @@
     </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
 
 
 
