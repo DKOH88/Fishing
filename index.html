@@ -2568,14 +2568,14 @@
                 const actualMap = {};
                 items.forEach(d => {
                     const t = d.obsrvnDt.substring(11, 16);
-                    actualMap[t] = d.tdlvHgt;
+                    actualMap[t] = toFiniteNumber(d.tdlvHgt);
                 });
                 actual = labels.map(lbl => actualMap[lbl] != null ? actualMap[lbl] : null);
             } else if (items && items.length > 0 && labels.length === 0) {
                 // 고저조 없고 실측만 있는 경우 (fallback)
                 labels = items.map(d => d.obsrvnDt.substring(11, 16));
-                predicted = items.map(d => d.bscTdlvHgt);
-                actual = items.map(d => d.tdlvHgt);
+                predicted = items.map(d => toFiniteNumber(d.bscTdlvHgt));
+                actual = items.map(d => toFiniteNumber(d.tdlvHgt));
             } else {
                 actual = null;
             }
@@ -2981,10 +2981,16 @@
             order: 0,
         }];
 
-        if (actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i])) {
+        const normalizedActual = Array.isArray(actual)
+            ? actual.map((v) => toFiniteNumber(v))
+            : null;
+        const hasActual = Array.isArray(normalizedActual)
+            && normalizedActual.some((v) => v != null);
+
+        if (hasActual) {
             datasets.push({
                 label: '실측 조위 (cm)',
-                data: actual,
+                data: normalizedActual,
                 borderColor: '#ffa726',
                 borderWidth: 1.5, borderDash: [4, 4],
                 fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 5,
@@ -3172,7 +3178,6 @@
         // 커스텀 범례 업데이트
         const tideLegendEl = document.getElementById('tideLegend');
         if (tideLegendEl) {
-            const hasActual = actual && actual.length > 0 && actual.some((v, i) => v !== predicted[i]);
             const hasNow = !!annotations['now_point'];
             const sunriseAnn = annotations['sunrise_point'];
             const hasSunrise = !!(sunriseAnn && sunriseAnn.xValue != null);
