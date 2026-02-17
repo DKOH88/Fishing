@@ -46,6 +46,30 @@
         .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
         .card-title { font-size: 1em; color: var(--primary); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; font-weight: 600; }
+        .chart-title-row { display: flex; align-items: center; width: 100%; gap: 8px; }
+        .tide-chart-load-status { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 0.72em; color: var(--muted); }
+        .tide-chart-load-status.is-loading .tide-chart-load-text { color: #ffb74d; }
+        .tide-chart-load-status.is-done .tide-chart-load-text { color: #69f0ae; }
+        .tide-chart-load-status.is-error .tide-chart-load-text { color: var(--high); }
+        .tide-chart-reload-btn {
+            width: 20px;
+            height: 20px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: rgba(255,255,255,0.03);
+            color: var(--primary);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95em;
+            line-height: 1;
+            cursor: pointer;
+            transition: all 0.2s;
+            padding: 0;
+        }
+        .tide-chart-reload-btn:hover { background: rgba(79,195,247,0.14); }
+        .tide-chart-reload-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .tide-chart-reload-btn.is-spinning { animation: spin 0.8s linear infinite; }
         .tide-data-stamp { margin-top: -8px; margin-bottom: 10px; font-size: 0.72em; color: var(--muted); letter-spacing: 0.02em; }
         .tide-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
         .tide-item { background: rgba(255,255,255,0.03); border-radius: 10px; padding: 14px; text-align: center; border: 1px solid rgba(255,255,255,0.05); }
@@ -244,7 +268,13 @@
             </div>
             <div class="card">
                 <div class="card-title" style="flex-wrap:wrap;gap:8px;">
-                    <span>📈 조위 변화 그래프</span>
+                    <div class="chart-title-row">
+                        <span>📈 조위 변화 그래프</span>
+                        <div id="tideChartLoadStatus" class="tide-chart-load-status">
+                            <span id="tideChartLoadText" class="tide-chart-load-text">대기</span>
+                            <button type="button" id="tideChartReloadBtn" class="tide-chart-reload-btn" onclick="refreshTideChart()" aria-label="조위 그래프 새로고침" title="조위 그래프 새로고침">↻</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="species-btns" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
                     <button class="species-btn" data-species="none" onclick="toggleSpecies('none')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">어종 OFF</button>
@@ -282,6 +312,7 @@
     const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
     let tideChart = null;
     let currentChart = null;
+    let tideChartReloading = false;
 
     // ==================== 지역 데이터 (관측소 + 조류 예보점 통합) ====================
     const REGIONS = [
@@ -1762,20 +1793,31 @@
     async function fetchAll() {
         const btn = document.getElementById('searchBtn');
         btn.disabled = true;
+        let chartLoadDone = false;
+        setTideChartLoadStatus('loading');
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
             await Promise.race([
-                Promise.all([fetchTideHighLow(), fetchTidePrediction(), fetchCurrentData()]),
+                (async () => {
+                    await Promise.all([fetchTideHighLow(), fetchCurrentData()]);
+                    await fetchTidePrediction();
+                })(),
                 timeout
             ]);
+            chartLoadDone = true;
         } catch(e) {
             console.error(e);
             if (e.message === '요청 시간 초과') {
                 const summaryEl = document.getElementById('tideSummary');
                 if (summaryEl) summaryEl.innerHTML = '<div class="error-msg">요청 시간이 초과되었습니다. 다시 시도해주세요.</div>';
             }
+            setTideChartLoadStatus('error');
         }
-        finally { btn.disabled = false; btn.textContent = '조회'; }
+        finally {
+            if (chartLoadDone) setTideChartLoadStatus('done');
+            btn.disabled = false;
+            btn.textContent = '조회';
+        }
     }
 
     // ==================== 1) 고저조 (tideFcstHghLw) ====================
@@ -2096,6 +2138,55 @@
         const el = document.getElementById('tideDataStamp');
         if (!el) return;
         el.textContent = text || '예보 생성시각 - · 실측 반영시각 -';
+    }
+
+    function setTideChartLoadStatus(state, text) {
+        const wrap = document.getElementById('tideChartLoadStatus');
+        const label = document.getElementById('tideChartLoadText');
+        const btn = document.getElementById('tideChartReloadBtn');
+        if (!wrap || !label) return;
+
+        wrap.classList.remove('is-loading', 'is-done', 'is-error');
+
+        const statusMap = {
+            idle: text || '대기',
+            loading: text || '로딩중...',
+            done: text || '로딩완료',
+            error: text || '로딩실패'
+        };
+        label.textContent = statusMap[state] || statusMap.idle;
+
+        if (state === 'loading') wrap.classList.add('is-loading');
+        else if (state === 'done') wrap.classList.add('is-done');
+        else if (state === 'error') wrap.classList.add('is-error');
+
+        if (btn) {
+            const isLoading = state === 'loading';
+            btn.disabled = isLoading;
+            btn.classList.toggle('is-spinning', isLoading);
+        }
+    }
+
+    async function refreshTideChart() {
+        if (tideChartReloading) return;
+        tideChartReloading = true;
+        setTideChartLoadStatus('loading');
+        try {
+            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
+            await Promise.race([
+                (async () => {
+                    await fetchTideHighLow();
+                    await fetchTidePrediction();
+                })(),
+                timeout
+            ]);
+            setTideChartLoadStatus('done');
+        } catch (e) {
+            console.error('그래프 새로고침 오류:', e);
+            setTideChartLoadStatus('error');
+        } finally {
+            tideChartReloading = false;
+        }
     }
 
     function extractByKeysCaseInsensitive(obj, keys) {
@@ -3185,12 +3276,12 @@
             if (hasActual) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:0;border-top:2px dashed #ffa726;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
             }
+            if (hasNow) {
+                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
+            }
             if (hasSunInfo) {
                 const sunLabel = `${sunriseTime ? `일출 ${sunriseTime}` : ''}${(sunriseTime && sunsetTime) ? ' | ' : ''}${sunsetTime ? `일몰 ${sunsetTime}` : ''}`;
                 html += `<span style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#ffb74d;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffb74d;">${sunLabel}</span></span>`;
-            }
-            if (hasNow) {
-                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
             }
             tideLegendEl.innerHTML = html;
             tideLegendEl.style.display = 'flex';
@@ -3496,6 +3587,7 @@
     </script>
 </body>
 </html>
+
 
 
 
