@@ -245,7 +245,6 @@
             <div class="card">
                 <div class="card-title" style="flex-wrap:wrap;gap:8px;">
                     <span>📈 조위 변화 그래프</span>
-                    <span id="chartSunInfo" style="font-size:0.78em;font-weight:400;color:#ffb74d;display:none;"></span>
                 </div>
                 <div class="species-btns" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
                     <button class="species-btn" data-species="none" onclick="toggleSpecies('none')" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">어종 OFF</button>
@@ -3179,15 +3178,16 @@
         const tideLegendEl = document.getElementById('tideLegend');
         if (tideLegendEl) {
             const hasNow = !!annotations['now_point'];
-            const sunriseAnn = annotations['sunrise_point'];
-            const hasSunrise = !!(sunriseAnn && sunriseAnn.xValue != null);
             const sunriseTime = (window._sunTimes && window._sunTimes.sunrise) ? window._sunTimes.sunrise : null;
+            const sunsetTime = (window._sunTimes && window._sunTimes.sunset) ? window._sunTimes.sunset : null;
+            const hasSunInfo = !!(sunriseTime || sunsetTime);
             let html = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
             if (hasActual) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:0;border-top:2px dashed #ffa726;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
             }
-            if (hasSunrise) {
-                html += `<span style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#ffb74d;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffb74d;">일출 ${sunriseTime}</span></span>`;
+            if (hasSunInfo) {
+                const sunLabel = `${sunriseTime ? `일출 ${sunriseTime}` : ''}${(sunriseTime && sunsetTime) ? ' | ' : ''}${sunsetTime ? `일몰 ${sunsetTime}` : ''}`;
+                html += `<span style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#ffb74d;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffb74d;">${sunLabel}</span></span>`;
             }
             if (hasNow) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
