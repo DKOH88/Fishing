@@ -204,9 +204,9 @@
         </div>
 
         <!-- 검색 -->
-        <div class="search-bar" id="searchBar" style="display:flex;align-items:center;gap:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0;cursor:text;" onclick="document.getElementById('searchInput').focus();">
+        <div class="search-bar" id="searchBar" style="display:flex;align-items:center;gap:0;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:0;cursor:text;" onclick="focusAndClearSearchInput(event)">
             <span class="search-icon" style="position:static;transform:none;padding-left:14px;flex-shrink:0;">🔍</span>
-            <input type="text" id="searchInput" placeholder="검색 (예: 인천, 오천항, 대천항, 여수...)" autocomplete="off" style="flex:1;min-width:60px;background:transparent;border:none;padding:12px 8px 12px 8px;" />
+            <input type="text" id="searchInput" placeholder="검색" autocomplete="off" style="flex:1;min-width:60px;background:transparent;border:none;padding:12px 8px 12px 8px;" />
             <span id="searchPortInfo" style="display:none;font-size:0.78em;color:var(--muted);white-space:nowrap;padding-right:12px;flex-shrink:0;">→ 조위: <strong id="searchPortStation" style="color:var(--primary)"></strong> · 조류: <strong id="searchPortCurrent" style="color:var(--accent)"></strong></span>
             <div class="search-results" id="searchResults"></div>
         </div>
@@ -549,6 +549,21 @@
 
     const searchIndex = buildSearchIndex();
 
+    function focusAndClearSearchInput(evt) {
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+        if (!searchInput) return;
+
+        const clickedSearchResult = !!(evt && evt.target && evt.target.closest && evt.target.closest('.search-results'));
+        const isPrefilled = searchInput.dataset.prefilled === '1';
+        if (!clickedSearchResult && isPrefilled) {
+            searchInput.value = '';
+            searchInput.dataset.prefilled = '0';
+            if (searchResults) searchResults.classList.remove('show');
+        }
+        searchInput.focus();
+    }
+
     // HTML escape 유틸 — XSS 방지
     function escapeHTML(str) {
         if (typeof str !== 'string') return '';
@@ -641,6 +656,7 @@
 
             // 검색창 닫기
             document.getElementById('searchInput').value = item.name;
+            document.getElementById('searchInput').dataset.prefilled = '1';
             document.getElementById('searchResults').classList.remove('show');
 
             // 자동 조회
@@ -673,6 +689,7 @@
 
         // 검색창 닫기
         document.getElementById('searchInput').value = item.name;
+        document.getElementById('searchInput').dataset.prefilled = '1';
         document.getElementById('searchResults').classList.remove('show');
 
         // 자동 조회
@@ -722,6 +739,7 @@
 
         searchInput.addEventListener('input', () => {
             clearTimeout(debounceTimer);
+            searchInput.dataset.prefilled = '0';
             debounceTimer = setTimeout(() => {
                 const q = searchInput.value.trim();
                 if (q.length === 0) { searchResults.classList.remove('show'); return; }
@@ -2664,15 +2682,24 @@
                 // 실측조위: API 실측값을 보간 라벨에 매핑
                 const actualMap = {};
                 items.forEach(d => {
-                    const t = d.obsrvnDt.substring(11, 16);
-                    actualMap[t] = toFiniteNumber(d.tdlvHgt);
+                    const t = normalizeClockTime(extractByKeysCaseInsensitive(d, ['obsrvnDt', 'obsrvnTm', 'obsrvnTime', 'tm', 'dateTime', 'predcDt', 'predcTm']));
+                    if (!t) return;
+                    actualMap[t] = toFiniteNumber(extractByKeysCaseInsensitive(d, ['tdlvHgt', 'obsrvnTdlvHgt', 'obsTdlvHgt', 'tideLevel', 'obsTideLevel']));
                 });
                 actual = labels.map(lbl => actualMap[lbl] != null ? actualMap[lbl] : null);
             } else if (items && items.length > 0 && labels.length === 0) {
                 // 고저조 없고 실측만 있는 경우 (fallback)
-                labels = items.map(d => d.obsrvnDt.substring(11, 16));
-                predicted = items.map(d => toFiniteNumber(d.bscTdlvHgt));
-                actual = items.map(d => toFiniteNumber(d.tdlvHgt));
+                const sortedRows = items
+                    .map(d => ({
+                        t: normalizeClockTime(extractByKeysCaseInsensitive(d, ['obsrvnDt', 'obsrvnTm', 'obsrvnTime', 'tm', 'dateTime', 'predcDt', 'predcTm'])),
+                        p: toFiniteNumber(extractByKeysCaseInsensitive(d, ['bscTdlvHgt', 'predcTdlvVl', 'tdlvVl'])),
+                        a: toFiniteNumber(extractByKeysCaseInsensitive(d, ['tdlvHgt', 'obsrvnTdlvHgt', 'obsTdlvHgt', 'tideLevel', 'obsTideLevel']))
+                    }))
+                    .filter(r => !!r.t)
+                    .sort((a, b) => a.t.localeCompare(b.t));
+                labels = sortedRows.map(r => r.t);
+                predicted = sortedRows.map(r => r.p);
+                actual = sortedRows.map(r => r.a);
             } else {
                 actual = null;
             }
@@ -3083,6 +3110,14 @@
             : null;
         const hasActual = Array.isArray(normalizedActual)
             && normalizedActual.some((v) => v != null);
+        const actualLineSegments = hasActual
+            ? normalizedActual.reduce((cnt, v, idx, arr) => {
+                if (idx === 0) return cnt;
+                return (arr[idx - 1] != null && v != null) ? cnt + 1 : cnt;
+            }, 0)
+            : 0;
+        const actualPointRadius = actualLineSegments > 0 ? 0 : 2.5;
+        const actualPointHoverRadius = actualLineSegments > 0 ? 5 : 4;
 
         if (hasActual) {
             datasets.push({
@@ -3090,26 +3125,29 @@
                 data: normalizedActual,
                 borderColor: '#ffa726',
                 borderWidth: 1.5, borderDash: [4, 4],
-                fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 5,
+                fill: false, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: actualPointRadius, pointHoverRadius: actualPointHoverRadius,
                 order: 1, spanGaps: false,
             });
         }
 
         const _pValid = predicted.filter(v => v != null);
+        const _aValid = hasActual ? normalizedActual.filter(v => v != null) : [];
         const _annYValues = Object.values(annotations)
             .map(a => (a && typeof a.yValue === 'number') ? a.yValue : null)
             .filter(v => v != null);
-        const _yAll = _pValid.concat(_annYValues);
+        const _yAll = _pValid.concat(_aValid, _annYValues);
 
         const yScale = {
-            min: 0,
             ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
             grid: { color: 'rgba(255,255,255,0.06)' }
         };
         if (_yAll.length > 0) {
+            const _yMinAuto = Math.min(..._yAll);
             const _yMaxAuto = Math.max(..._yAll);
+            yScale.min = Math.min(0, Math.floor(_yMinAuto / 100) * 100);
             yScale.max = Math.max(100, Math.ceil(_yMaxAuto / 100) * 100);
         } else {
+            yScale.min = 0;
             yScale.max = 100;
         }
 
