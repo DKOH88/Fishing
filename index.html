@@ -692,9 +692,11 @@
         document.getElementById('stationSelect').addEventListener('change', onStationChange);
 
         // 기본값: 오천항
+        let initialFetchTriggered = false;
         const defaultPort = FISHING_PORTS.find(p => p.name === '오천항');
         if (defaultPort) {
             selectSearchResult({ name: defaultPort.name, type: 'port' });
+            initialFetchTriggered = true;
         }
 
         // 포인트 배너 닫기 버튼
@@ -755,6 +757,11 @@
                 }
             }
         });
+
+        // 접속 시 오늘 날짜 데이터 자동 조회 보장
+        if (!initialFetchTriggered) {
+            fetchAll();
+        }
     });
 
     function showToast(msg, isError = false) {
