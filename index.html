@@ -3784,18 +3784,23 @@
                 borderColor: 'rgba(0,229,255,0.35)',
                 borderWidth: 1.5, borderDash: [5, 4],
             };
-            // 기준값 라벨 (좌측 Y축 끝)
+            // 기준값 라벨 (좌측 Y축 끝, 값이 낮으면 포인트 위로 이동)
+            const _speedMax = Math.max(...speeds);
+            const _yAxisMax = Math.ceil(_speedMax / 50) * 50 + 50;
+            const _isNearBottom = nowSpeed < _yAxisMax * 0.15;
             annotations['now_hline_val'] = {
                 type: 'label',
-                xValue: 0, yValue: nowSpeed,
-                xAdjust: -5,
+                xValue: _isNearBottom ? nowIdx : 0,
+                yValue: nowSpeed,
+                xAdjust: _isNearBottom ? -35 : -5,
+                yAdjust: _isNearBottom ? -18 : 0,
                 content: '(' + nowSpeed.toFixed(1) + ')',
                 color: '#00e5ff',
                 font: { size: 9, weight: 'bold' },
                 backgroundColor: 'rgba(17,29,53,0.85)',
                 padding: { top: 2, bottom: 2, left: 4, right: 4 },
                 borderRadius: 3,
-                position: { x: 'start' },
+                position: _isNearBottom ? { x: 'center' } : { x: 'start' },
             };
         }
 
