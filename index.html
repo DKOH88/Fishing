@@ -3954,11 +3954,14 @@
             };
         }
         if (hasSpeed) {
+            const rawSpeedMax = Math.ceil(speedMax / 20) * 20 + 20;
+            const speedStep = rawSpeedMax <= 60 ? 10 : rawSpeedMax <= 120 ? 20 : rawSpeedMax <= 300 ? 50 : 100;
+            const speedAxisMax = Math.ceil(rawSpeedMax / speedStep) * speedStep;
             scales.ySpeed = {
                 type: 'linear', position: 'right', display: true,
                 min: 0,
-                max: 240,
-                ticks: { stepSize: 30, color: '#34d399', font: { size: 10 }, callback: v => v + '', padding: 0 },
+                max: speedAxisMax,
+                ticks: { stepSize: speedStep, color: '#34d399', font: { size: 10 }, callback: v => v + '', padding: 0 },
                 grid: { drawOnChartArea: false },
                 border: { display: false },
                 title: { display: false },
