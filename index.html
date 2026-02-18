@@ -3967,42 +3967,7 @@
                     position: { x: 'end' },
                 };
             }
-            // 현재 수치 라벨 (그래프 최상단, 각 고유 색상)
             const nowSpeedY = speedValues[nowIdx] != null ? speedValues[nowIdx] : null;
-            const tideAxisMax = hasTide ? scales.yTide.max : 100;
-            const hasBoth = (hasTide && nowTideY != null) && (hasSpeed && nowSpeedY != null);
-            if (hasTide && nowTideY != null) {
-                annotations['now_val_tide'] = {
-                    type: 'label',
-                    xValue: nowIdx,
-                    yValue: tideAxisMax,
-                    yScaleID: 'yTide',
-                    yAdjust: -8,
-                    xAdjust: hasBoth ? -70 : 0,
-                    content: '조위 ' + nowTideY.toFixed(0) + 'cm',
-                    color: '#38bdf8',
-                    font: { size: 10, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 3, bottom: 3, left: 8, right: 8 },
-                    borderRadius: 4,
-                };
-            }
-            if (hasSpeed && nowSpeedY != null) {
-                annotations['now_val_speed'] = {
-                    type: 'label',
-                    xValue: nowIdx,
-                    yValue: tideAxisMax,
-                    yScaleID: hasTide ? 'yTide' : 'ySpeed',
-                    yAdjust: -8,
-                    xAdjust: hasBoth ? 70 : 0,
-                    content: '유속 ' + nowSpeedY.toFixed(1) + 'cm/s',
-                    color: '#34d399',
-                    font: { size: 10, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 3, bottom: 3, left: 8, right: 8 },
-                    borderRadius: 4,
-                };
-            }
         }
 
         // 범례에 예측 구간 표기 추가를 위한 플래그
