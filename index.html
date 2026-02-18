@@ -86,6 +86,26 @@
         .current-table { width: 100%; border-collapse: collapse; }
         .current-table th { text-align: left; padding: 8px 12px; font-size: 0.78em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
         .current-table td { padding: 10px 12px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .current-unit-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: rgba(79,195,247,0.08);
+            color: var(--primary);
+            font-size: 0.78em;
+            font-weight: 700;
+            text-transform: none;
+            padding: 4px 8px;
+            cursor: pointer;
+            line-height: 1.1;
+            transition: all 0.2s;
+        }
+        .current-unit-toggle-btn:hover { background: rgba(79,195,247,0.18); border-color: #2a6fa3; }
+        .current-unit-toggle-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(79,195,247,0.35); }
+        .current-unit-toggle-btn .unit-icon { font-size: 0.95em; opacity: 0.95; }
+        .current-unit-toggle-btn .unit-hint { font-size: 0.72em; color: var(--muted); font-weight: 600; }
         .speed-bar { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; margin-top: 4px; }
         .speed-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
         .loading { text-align: center; padding: 40px; color: var(--muted); }
@@ -180,6 +200,7 @@
             .btn { padding: 8px 16px; font-size: 0.88em; }
             .sun-row { font-size: 0.9em; }
             .sun-row .sun-time { font-size: 1em; }
+            .current-unit-toggle-btn .unit-hint { display: none; }
         }
     </style>
 </head>
@@ -3616,7 +3637,7 @@
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
-                <thead><tr><th>시간</th><th>유향</th><th onclick="toggleCurrentSpeedUnit()" style="cursor:pointer;user-select:none;">유속 (${speedUnitLabel})</th><th>세기</th></tr></thead>
+                <thead><tr><th>시간</th><th>유향</th><th><button type="button" class="current-unit-toggle-btn" onclick="toggleCurrentSpeedUnit()" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span>유속 (${speedUnitLabel})</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button></th><th>세기</th></tr></thead>
                 <tbody>
                     ${items.map(item => {
                         const time = item.__timeLabel || extractCurrentTimeLabel(item) || '-';
@@ -3684,8 +3705,6 @@
     </script>
 </body>
 </html>
-
-
 
 
 
