@@ -3740,6 +3740,9 @@
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
         gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
         gradient.addColorStop(1, 'rgba(0,229,255,0.02)');
+        const grayGrad = ctx.createLinearGradient(0, 0, 0, 320);
+        grayGrad.addColorStop(0, 'rgba(148,163,184,0.15)');
+        grayGrad.addColorStop(1, 'rgba(148,163,184,0.02)');
 
         // 현재 시간 인덱스 계산
         let nowIdx = -1;
@@ -3828,6 +3831,10 @@
                     borderColor: '#00e5ff', backgroundColor: gradient,
                     borderWidth: 2, fill: true, tension: 0.4,
                     pointRadius: 0, pointHoverRadius: 0,
+                    segment: {
+                        borderColor: ctx2 => nowIdx >= 0 && ctx2.p1DataIndex > nowIdx ? 'rgba(148,163,184,0.5)' : undefined,
+                        backgroundColor: ctx2 => nowIdx >= 0 && ctx2.p1DataIndex > nowIdx ? grayGrad : undefined,
+                    },
                 }]
             },
             options: {
