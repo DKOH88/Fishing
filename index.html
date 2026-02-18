@@ -2770,14 +2770,7 @@
             const fLabels = filterIndices.map(i => labels[i]);
             const fPredicted = filterIndices.map(i => predicted[i]);
             let fActual = actual ? filterIndices.map(i => actual[i]) : null;
-            // 실측 데이터 끝부분의 null 제거 (tension 곡선 튀김 방지)
-            if (fActual) {
-                let lastValid = fActual.length - 1;
-                while (lastValid >= 0 && fActual[lastValid] == null) lastValid--;
-                if (lastValid < fActual.length - 1 && lastValid >= 0) {
-                    fActual = fActual.slice(0, lastValid + 1);
-                }
-            }
+            // fActual 배열 길이를 fLabels와 동일하게 유지 (Chart.js 매핑 보장)
 
             const _fValid = fPredicted.filter(v => v != null);
             const _dataMin = _fValid.length > 0 ? Math.min(..._fValid) : 0;
