@@ -3334,7 +3334,7 @@
                 const _yMin = _pValid.length > 0 ? Math.min(..._pValid) : 0;
                 annotations['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMin,
-                    xAdjust: 0, yAdjust: 24,
+                    xAdjust: 0, yAdjust: 21,
                     content: nowLabel,
                     color: '#ffeb3b',
                     font: { size: 10, weight: 'bold' },
@@ -3490,7 +3490,7 @@
                 const _yMinT = _filteredT.length > 0 ? Math.min(..._filteredT) : 0;
                 ann['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMinT,
-                    xAdjust: 0, yAdjust: 24,
+                    xAdjust: 0, yAdjust: 22,
                     content: nowLabel,
                     color: '#ffeb3b',
                     font: { size: 10, weight: 'bold' },
@@ -4061,7 +4061,7 @@
             annotations['now_label'] = {
                 type: 'label', xValue: nowIdx,
                 yValue: hasTide ? _tValid : 0,
-                yAdjust: 24,
+                yAdjust: 19,
                 content: nowLabel,
                 color: '#ffeb3b',
                 font: { size: 10, weight: 'bold' },
