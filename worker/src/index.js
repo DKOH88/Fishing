@@ -33,7 +33,7 @@ const FISHING_ENDPOINT_PATH = 'fcstFishingv2/GetFcstFishingApiServicev2';
 
 const ALLOWED_ORIGINS = new Set([
   'https://fishing-tide.pages.dev',
-  'https://fishing-dp9.pages.dev',
+  'https://fishing-info.pages.dev',
 ]);
 
 // localhost/127.0.0.1 with any port (dev only)
