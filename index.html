@@ -273,6 +273,7 @@
                         </div>
                     </div>
                     <button class="btn" id="searchBtn" style="padding:0 12px;font-size:0.9em;min-width:0;height:36px;align-self:flex-end;" onclick="fetchAll()">조회</button>
+                    <button class="btn" style="padding:0 12px;font-size:0.9em;min-width:0;height:36px;align-self:flex-end;" onclick="document.getElementById('dateInput').value=new Date().toISOString().split('T')[0];updateDateDisplay();fetchAll();">오늘</button>
                 </div>
             </div>
         </div>
