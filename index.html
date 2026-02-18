@@ -35,8 +35,8 @@
         header h1 .wave { font-size: 1.3em; }
         .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
         .control-group { flex: 1; min-width: 140px; }
-        .control-group label { display: block; font-size: 0.78em; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-        select, input[type="date"] { width: 100%; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; font-family: 'Segoe UI', -apple-system, sans-serif; outline: none; cursor: pointer; }
+        .control-group label { display: block; font-size: 0.78em; color: var(--muted); margin-bottom: 0; text-transform: uppercase; letter-spacing: 0.5px; }
+        select, input[type="date"] { width: 100%; padding: 8px 12px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 0.95em; font-family: 'Segoe UI', -apple-system, sans-serif; outline: none; cursor: pointer; }
         input[type="date"] { position: relative; color-scheme: dark; }
         input[type="date"]::-webkit-datetime-edit { color: var(--text); font-family: 'Segoe UI', -apple-system, sans-serif; width: 100%; text-align: center; padding: 0; margin: auto; }
         input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
@@ -229,14 +229,14 @@
         </header>
 
         <!-- Controls -->
-        <div class="controls">
+        <div class="controls" style="margin-bottom:8px;">
             <div class="control-group" style="display:flex;gap:8px;flex-wrap:nowrap;align-items:flex-end;">
                 <div style="flex:1;min-width:0;">
-                    <label>관측소 (조위) <span class="region-badge" id="stationRegion">인천/경기</span></label>
+                    <label>관측소(조위)<span class="region-badge" id="stationRegion" style="margin-left:2px;">인천/경기</span></label>
                     <select id="stationSelect"></select>
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <label>조류 예보점 <span class="region-badge" id="currentRegion">인천/경기</span></label>
+                    <label>조류 예보점<span class="region-badge" id="currentRegion" style="margin-left:2px;">인천/경기</span></label>
                     <select id="currentSelect"></select>
                 </div>
             </div>
@@ -281,7 +281,7 @@
         </div>
 
         <!-- 낚시 포인트 연결 표시 배너 -->
-        <div id="portBanner" style="display:none; margin-bottom:12px; padding:10px 16px; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.2); border-radius:10px; font-size:0.85em;">
+        <div id="portBanner" style="display:none; margin-bottom:6px; padding:6px 12px; background:rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.2); border-radius:8px; font-size:0.85em;">
             <span style="color:var(--accent);">📍 <strong id="portBannerName"></strong></span>
             <span style="color:var(--muted);margin-left:8px;">→ 조위: <strong id="portBannerStation" style="color:var(--primary)"></strong> · 조류: <strong id="portBannerCurrent" style="color:var(--accent)"></strong></span>
             <span id="portBannerClose" style="float:right;cursor:pointer;color:var(--muted);font-size:1.1em;" title="닫기">✕</span>
