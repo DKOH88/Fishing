@@ -313,6 +313,9 @@
     let tideChart = null;
     let currentChart = null;
     let tideChartReloading = false;
+    let currentSpeedUnit = 'cm/s';
+    let currentViewState = { items: [], el: null, fldEbbSummary: null, areaSummary: null };
+    const CMPS_PER_KNOT = 51.444444;
 
     // ==================== 지역 데이터 (관측소 + 조류 예보점 통합) ====================
     const REGIONS = [
@@ -3390,6 +3393,43 @@
     }
     startNowMarkerTimer();
 
+    function getCurrentSpeedUnitLabel() {
+        return currentSpeedUnit === 'kn' ? 'k/n' : 'cm/s';
+    }
+
+    function convertSpeedByUnit(speedCmps, unit = currentSpeedUnit) {
+        const v = toFiniteNumber(speedCmps);
+        if (v == null) return null;
+        if (unit === 'kn') return v / CMPS_PER_KNOT;
+        return v;
+    }
+
+    function setCurrentViewState(items, el, fldEbbSummary = null, areaSummary = null) {
+        currentViewState = {
+            items: Array.isArray(items) ? items : [],
+            el: el || null,
+            fldEbbSummary,
+            areaSummary,
+        };
+    }
+
+    function renderCurrentViews(items, el, fldEbbSummary = null, areaSummary = null) {
+        setCurrentViewState(items, el, fldEbbSummary, areaSummary);
+        renderCurrentTable(items, el, fldEbbSummary, areaSummary);
+        renderCurrentChart(items);
+    }
+
+    function toggleCurrentSpeedUnit() {
+        currentSpeedUnit = currentSpeedUnit === 'cm/s' ? 'kn' : 'cm/s';
+        if (!currentViewState || !currentViewState.el) return;
+        renderCurrentViews(
+            currentViewState.items,
+            currentViewState.el,
+            currentViewState.fldEbbSummary,
+            currentViewState.areaSummary
+        );
+    }
+
     // ==================== 3) 조류 (crntFcstTime 시계열) ====================
     async function fetchCurrentData() {
         const infoEl = document.getElementById('currentInfo');
@@ -3398,7 +3438,7 @@
         const stationCode = getStation();
         if (!cStation) {
             infoEl.innerHTML = '<div class="error-msg">이 지역에는 조류 예보점이 없습니다.</div>';
-            renderCurrentChart([]);
+            renderCurrentViews([], infoEl);
             renderMulddaeCardFromState();
             return;
         }
@@ -3456,7 +3496,7 @@
 
             if (!firstPageItems || firstPageItems.length === 0) {
                 infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
-                renderCurrentChart([]);
+                renderCurrentViews([], infoEl, fldEbbSummary, areaSummary);
                 renderMulddaeCardFromState();
                 return;
             }
@@ -3499,13 +3539,12 @@
             if (timeFiltered.length === 0) {
                 if (withTimeItems.length === 0) {
                     const fallback = mergedItems.filter((_, idx) => idx % 10 === 0);
-                    renderCurrentTable(fallback, infoEl, fldEbbSummary, areaSummary);
-                    renderCurrentChart(fallback);
+                    renderCurrentViews(fallback, infoEl, fldEbbSummary, areaSummary);
                     renderMulddaeCardFromState();
                     return;
                 }
                 infoEl.innerHTML = '<div class="error-msg">05:00~18:00 범위 조류 데이터가 없습니다.</div>';
-                renderCurrentChart([]);
+                renderCurrentViews([], infoEl, fldEbbSummary, areaSummary);
                 renderMulddaeCardFromState();
                 return;
             }
@@ -3519,12 +3558,11 @@
             const filtered = tenMinuteFiltered.length > 0
                 ? tenMinuteFiltered
                 : timeFiltered.filter((_, idx) => idx % 10 === 0);
-            renderCurrentTable(filtered, infoEl, fldEbbSummary, areaSummary);
-            renderCurrentChart(filtered);
+            renderCurrentViews(filtered, infoEl, fldEbbSummary, areaSummary);
             renderMulddaeCardFromState();
         } catch(e) {
             infoEl.innerHTML = `<div class="error-msg">조류 오류: ${escapeHTML(e.message)}</div>`;
-            renderCurrentChart([]);
+            renderCurrentViews([], infoEl);
             renderMulddaeCardFromState();
         }
     }
@@ -3541,19 +3579,30 @@
         if (!items || items.length === 0) return;
         const speeds = items.map(i => parseFloat(i.crsp) || 0);
         const maxSpeed = speeds.length > 0 ? Math.max(...speeds, 1) : 1;
+        const speedUnitLabel = getCurrentSpeedUnitLabel();
         const fldText = fldEbbSummary && fldEbbSummary.fldTime ? fldEbbSummary.fldTime : '-';
         const ebbText = fldEbbSummary && fldEbbSummary.ebbTime ? fldEbbSummary.ebbTime : '-';
-        const fldSpdText = fldEbbSummary && Number.isFinite(fldEbbSummary.fldSpeed) ? ` (${fldEbbSummary.fldSpeed.toFixed(1)}cm/s)` : '';
-        const ebbSpdText = fldEbbSummary && Number.isFinite(fldEbbSummary.ebbSpeed) ? ` (${fldEbbSummary.ebbSpeed.toFixed(1)}cm/s)` : '';
+        const fldSpeed = fldEbbSummary && Number.isFinite(fldEbbSummary.fldSpeed) ? convertSpeedByUnit(fldEbbSummary.fldSpeed) : null;
+        const ebbSpeed = fldEbbSummary && Number.isFinite(fldEbbSummary.ebbSpeed) ? convertSpeedByUnit(fldEbbSummary.ebbSpeed) : null;
+        const fldSpdText = fldSpeed != null ? ` (${fldSpeed.toFixed(1)}${speedUnitLabel})` : '';
+        const ebbSpdText = ebbSpeed != null ? ` (${ebbSpeed.toFixed(1)}${speedUnitLabel})` : '';
         const fldEbbLine = (fldEbbSummary && (fldEbbSummary.fldTime || fldEbbSummary.ebbTime))
             ? ` · 창/낙조 ${fldText}${fldSpdText} / ${ebbText}${ebbSpdText}`
             : '';
-        const areaUnit = areaSummary && areaSummary.unit ? areaSummary.unit : '';
+        const rawAreaUnit = areaSummary && areaSummary.unit ? areaSummary.unit : '';
+        const areaNeedsUnitConvert = currentSpeedUnit === 'kn' && rawAreaUnit === 'cm/s';
+        const areaUnit = areaNeedsUnitConvert ? 'k/n' : rawAreaUnit;
+        const areaAvg = areaSummary && Number.isFinite(areaSummary.avgSpeed)
+            ? (areaNeedsUnitConvert ? convertSpeedByUnit(areaSummary.avgSpeed) : areaSummary.avgSpeed)
+            : null;
+        const areaMax = areaSummary && Number.isFinite(areaSummary.maxSpeed)
+            ? (areaNeedsUnitConvert ? convertSpeedByUnit(areaSummary.maxSpeed) : areaSummary.maxSpeed)
+            : null;
         const areaAvgText = areaSummary && Number.isFinite(areaSummary.avgSpeed)
-            ? `${areaSummary.avgSpeed.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            ? `${areaAvg.toFixed(2)}${areaUnit ? areaUnit : ''}`
             : '-';
         const areaMaxText = areaSummary && Number.isFinite(areaSummary.maxSpeed)
-            ? `${areaSummary.maxSpeed.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            ? `${areaMax.toFixed(2)}${areaUnit ? areaUnit : ''}`
             : '-';
         const areaDirText = areaSummary && areaSummary.dirText ? ` ${areaSummary.dirText}` : '';
         const areaLine = areaSummary
@@ -3567,17 +3616,18 @@
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
-                <thead><tr><th>시간</th><th>유향</th><th>유속 (cm/s)</th><th>세기</th></tr></thead>
+                <thead><tr><th>시간</th><th>유향</th><th onclick="toggleCurrentSpeedUnit()" style="cursor:pointer;user-select:none;">유속 (${speedUnitLabel})</th><th>세기</th></tr></thead>
                 <tbody>
                     ${items.map(item => {
                         const time = item.__timeLabel || extractCurrentTimeLabel(item) || '-';
                         const speed = parseFloat(item.crsp) || 0;
+                        const speedDisplay = convertSpeedByUnit(speed);
                         const pct = (speed / maxSpeed) * 100;
                         const color = getSpeedColor(speed);
                         return `<tr>
                             <td>${time}</td>
                             <td style="color:${color};">${escapeHTML(item.crdir || '-')}</td>
-                            <td>${speed.toFixed(1)}</td>
+                            <td>${speedDisplay.toFixed(1)}</td>
                             <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
                         </tr>`;
                     }).join('')}
@@ -3594,7 +3644,9 @@
         if (!items || items.length === 0) { currentChart = null; return; }
 
         const labels = items.map(i => i.__timeLabel || extractCurrentTimeLabel(i) || '-');
-        const speeds = items.map(i => parseFloat(i.crsp) || 0);
+        const rawSpeeds = items.map(i => parseFloat(i.crsp) || 0);
+        const speeds = rawSpeeds.map((v) => convertSpeedByUnit(v));
+        const speedUnitLabel = getCurrentSpeedUnitLabel();
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
         gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
@@ -3605,7 +3657,7 @@
             data: {
                 labels,
                 datasets: [{
-                    label: '유속 (cm/s)', data: speeds,
+                    label: `유속 (${speedUnitLabel})`, data: speeds,
                     borderColor: '#00e5ff', backgroundColor: gradient,
                     borderWidth: 2, fill: true, tension: 0.4,
                     pointRadius: 0, pointHoverRadius: 0,
@@ -3619,12 +3671,12 @@
                     tooltip: {
                         backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
                         bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
-                        callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} cm/s` }
+                        callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} ${speedUnitLabel}` }
                     }
                 },
                 scales: {
                     x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm/s' }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' ' + speedUnitLabel }, grid: { color: 'rgba(255,255,255,0.06)' } }
                 }
             }
         });
@@ -3632,12 +3684,6 @@
     </script>
 </body>
 </html>
-
-
-
-
-
-
 
 
 
