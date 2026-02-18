@@ -3101,7 +3101,7 @@
             data: predicted,
             borderColor: '#4fc3f7',
             backgroundColor: grad1,
-            borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 5,
+            borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 0,
             order: 0,
         }];
 
@@ -3117,7 +3117,7 @@
             }, 0)
             : 0;
         const actualPointRadius = actualLineSegments > 0 ? 0 : 2.5;
-        const actualPointHoverRadius = actualLineSegments > 0 ? 5 : 4;
+        const actualPointHoverRadius = 0;
 
         if (hasActual) {
             datasets.push({
@@ -3608,7 +3608,7 @@
                     label: '유속 (cm/s)', data: speeds,
                     borderColor: '#00e5ff', backgroundColor: gradient,
                     borderWidth: 2, fill: true, tension: 0.4,
-                    pointRadius: 0, pointHoverRadius: 5,
+                    pointRadius: 0, pointHoverRadius: 0,
                 }]
             },
             options: {
@@ -3632,7 +3632,6 @@
     </script>
 </body>
 </html>
-
 
 
 
