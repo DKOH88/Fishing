@@ -3732,11 +3732,11 @@
                 backgroundColor: 'rgba(255,235,59,0.9)',
                 radius: 5, borderColor: '#fff', borderWidth: 1.5,
             };
-            // 시각 라벨 (하단)
+            // 시각 라벨 (포인트 위)
             annotations['now_label'] = {
                 type: 'label', xValue: nowIdx,
-                yValue: Math.min(...speeds.filter(v => v != null && v > 0)),
-                yAdjust: 24,
+                yValue: nowSpeed,
+                yAdjust: -18,
                 content: labels[nowIdx],
                 color: '#ffeb3b',
                 font: { size: 10, weight: 'bold' },
@@ -3754,7 +3754,7 @@
                 type: 'label',
                 xValue: 0, yValue: nowSpeed,
                 xAdjust: -5,
-                content: '(' + nowSpeed.toFixed(0) + ')',
+                content: '(' + nowSpeed.toFixed(1) + ')',
                 color: '#00e5ff',
                 font: { size: 9, weight: 'bold' },
                 backgroundColor: 'rgba(17,29,53,0.85)',
