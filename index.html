@@ -3735,8 +3735,8 @@
             // 시각 라벨 (하단)
             annotations['now_label'] = {
                 type: 'label', xValue: nowIdx,
-                yValue: Math.min(...speeds.filter(v => v != null && v > 0)),
-                yAdjust: -14,
+                yValue: 0,
+                yAdjust: 12,
                 content: labels[nowIdx],
                 color: '#ffeb3b',
                 font: { size: 10, weight: 'bold' },
