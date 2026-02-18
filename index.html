@@ -3187,8 +3187,9 @@
         const _yAll = _pValid.concat(_aValid, _annYValues);
 
         const yScale = {
-            ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' cm' },
-            grid: { color: 'rgba(255,255,255,0.06)' }
+            ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + '', padding: 0 },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            title: { display: true, text: 'cm', color: '#7a8ba3', font: { size: 9 }, padding: { top: 0, bottom: 0 } }
         };
         if (_yAll.length > 0) {
             const _yMinAuto = Math.min(..._yAll);
@@ -3370,7 +3371,7 @@
             plugins: [zoneFillPlugin],
             options: {
                 responsive: true, maintainAspectRatio: false,
-                layout: { padding: { top: 24, right: 15, bottom: 4 } },
+                layout: { padding: { top: 24, right: 0, bottom: 4, left: 0 } },
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
