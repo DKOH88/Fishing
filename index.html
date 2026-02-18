@@ -345,7 +345,7 @@
         <div class="tab-content" id="tab-combined">
             <div class="card" style="padding-bottom:12px;">
                 <div class="card-title" style="margin-bottom:4px;">📊 조위-유속 복합 그래프</div>
-                <div id="combinedChartLegend" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;padding:6px 10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.76em;color:var(--muted);align-items:center;"></div>
+                <div id="combinedChartLegend" style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:2px;padding:3px 10px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.76em;color:var(--muted);align-items:center;"></div>
                 <div class="chart-container" style="height:380px;"><canvas id="combinedChart"></canvas></div>
                 <div id="combinedChartInfo" style="margin-top:10px;font-size:0.76em;color:var(--muted);text-align:center;letter-spacing:0.02em;"></div>
             </div>
@@ -4022,7 +4022,7 @@
                     xAdjust: -5,
                     content: '(' + nowTideY.toFixed(0) + ')',
                     color: '#38bdf8',
-                    font: { size: 9, weight: 'bold' },
+                    font: { size: 7, weight: 'bold' },
                     backgroundColor: 'rgba(17,29,53,0.85)',
                     padding: { top: 2, bottom: 2, left: 4, right: 4 },
                     borderRadius: 3,
@@ -4048,7 +4048,7 @@
                     xAdjust: 5,
                     content: '(' + nowSpeedRaw.toFixed(0) + ')',
                     color: '#34d399',
-                    font: { size: 9, weight: 'bold' },
+                    font: { size: 7, weight: 'bold' },
                     backgroundColor: 'rgba(17,29,53,0.85)',
                     padding: { top: 2, bottom: 2, left: 4, right: 4 },
                     borderRadius: 3,
@@ -4119,7 +4119,7 @@
             plugins: [nowLinePlugin, crosshairPlugin],
             options: {
                 responsive: true, maintainAspectRatio: false,
-                layout: { padding: { top: 24, right: 0, bottom: 8, left: 0 } },
+                layout: { padding: { top: 10, right: 0, bottom: 8, left: 0 } },
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
