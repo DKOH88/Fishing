@@ -2,5 +2,9 @@ name = "tide-api-proxy"
 main = "src/index.js"
 compatibility_date = "2025-05-06"
 
+[[kv_namespaces]]
+binding = "VISITOR_STORE"
+id = "cd2306ce540a4402907f4610b1e19368"
+
 [observability]
 enabled = true

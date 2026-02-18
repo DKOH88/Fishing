@@ -29,7 +29,8 @@
             min-height: 100vh;
         }
         .container { max-width: 960px; margin: 0 auto; padding: 16px; }
-        header { text-align: center; padding: 20px 0 12px; }
+        header { text-align: center; padding: 20px 0 12px; position: relative; }
+        .visitor-counter { position: absolute; top: 8px; right: 0; font-size: 0.7em; color: var(--muted); white-space: nowrap; letter-spacing: 0.3px; }
         header h1 { font-size: 1.6em; color: var(--accent); display: flex; align-items: center; justify-content: center; gap: 10px; }
         header h1 .wave { font-size: 1.3em; }
         .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end; }
@@ -194,6 +195,7 @@
             .container { padding: 10px; }
             header { padding: 12px 0 8px; }
             header h1 { font-size: 1.15em; }
+            .visitor-counter { position: static; text-align: center; margin-top: 4px; font-size: 0.65em; }
             .card { padding: 14px; margin-bottom: 12px; }
             .card-title { font-size: 0.9em; margin-bottom: 10px; }
             .tide-summary { grid-template-columns: repeat(3, 1fr); gap: 6px; }
@@ -223,6 +225,7 @@
     <div class="container">
         <header>
             <h1><span class="wave">🌊</span> 물때 & 조류 정보</h1>
+            <div class="visitor-counter" id="visitorCounter"></div>
         </header>
 
         <!-- Controls -->
@@ -360,6 +363,20 @@
     <script>
     // ==================== CONFIG ====================
     const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
+
+    // ==================== 방문자 카운터 ====================
+    async function loadVisitorCount() {
+        try {
+            const r = await fetch(`${API_BASE}/api/visitor`);
+            if (!r.ok) return;
+            const d = await r.json();
+            const el = document.getElementById('visitorCounter');
+            if (el && d.today != null && d.total != null) {
+                el.textContent = `Today: ${d.today.toLocaleString()}명 · Total: ${d.total.toLocaleString()}명`;
+            }
+        } catch(e) { /* 방문자 카운터 실패 시 무시 */ }
+    }
+
     let tideChart = null;
     let currentChart = null;
     let combinedChart = null;
@@ -752,6 +769,7 @@
 
     // ==================== INIT ====================
     document.addEventListener('DOMContentLoaded', () => {
+        loadVisitorCount();
         const today = new Date();
         document.getElementById('dateInput').value = today.toISOString().split('T')[0];
         updateDateDisplay();

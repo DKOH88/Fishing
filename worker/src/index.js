@@ -99,6 +99,12 @@ function getTodayStr() {
   return `${y}${m}${d}`;
 }
 
+async function hashIP(ip) {
+  const data = new TextEncoder().encode(ip);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function computeCacheTTL(endpoint, reqDate) {
   const todayStr = getTodayStr();
 
@@ -465,6 +471,56 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
   return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404, request);
 }
 
+// ==================== 방문자 카운터 ====================
+
+async function handleVisitorRequest(request, env) {
+  const KV = env.VISITOR_STORE;
+  if (!KV) {
+    return jsonResponse({ error: 'Visitor store not configured' }, 500, request);
+  }
+
+  const todayStr = getTodayStr();
+  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+  const ipHash = await hashIP(ip);
+
+  const dailyIpKey = `ip:${todayStr}:${ipHash}`;
+  const totalIpKey = `ip_total:${ipHash}`;
+  const dailyCountKey = `today:${todayStr}`;
+  const totalCountKey = 'total';
+
+  const [existsToday, existsTotal] = await Promise.all([
+    KV.get(dailyIpKey),
+    KV.get(totalIpKey),
+  ]);
+
+  let [dailyCount, totalCount] = await Promise.all([
+    KV.get(dailyCountKey),
+    KV.get(totalCountKey),
+  ]);
+  dailyCount = parseInt(dailyCount || '0', 10);
+  totalCount = parseInt(totalCount || '0', 10);
+
+  const DAY_TTL = 48 * 60 * 60;
+
+  if (!existsToday) {
+    dailyCount += 1;
+    await Promise.all([
+      KV.put(dailyIpKey, '1', { expirationTtl: DAY_TTL }),
+      KV.put(dailyCountKey, String(dailyCount), { expirationTtl: DAY_TTL }),
+    ]);
+  }
+
+  if (!existsTotal) {
+    totalCount += 1;
+    await Promise.all([
+      KV.put(totalIpKey, '1'),
+      KV.put(totalCountKey, String(totalCount)),
+    ]);
+  }
+
+  return jsonResponse({ today: dailyCount, total: totalCount }, 200, request);
+}
+
 // ==================== 음양력 변환 (KASI 공공데이터포털) ====================
 
 const LUNAR_API_BASE = 'https://apis.data.go.kr/B090041/openapi/service/LrsrCldInfoService/getLunCalInfo';
@@ -568,6 +624,11 @@ export default {
       return jsonResponse({ error: 'Method not allowed' }, 405, request);
     }
 
+    // 방문자 카운터 API: GET /api/visitor
+    if (url.pathname === '/api/visitor') {
+      return handleVisitorRequest(request, env);
+    }
+
     // 음양력 변환 API: GET /api/lunar?solYear=2026&solMonth=09&solDay=01
     if (url.pathname === '/api/lunar') {
       return handleLunarRequest(url, env, ctx, request);
@@ -663,7 +724,8 @@ export default {
           '/api/tide-time', '/api/deviation', '/api/ls-term-tide-obs', '/api/tidebed', '/api/current-fld-ebb',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area', '/api/khoa/tide-harmonics',
-          '/api/lunar'
+          '/api/lunar',
+          '/api/visitor'
         ]
       }, 404, request);
     }
