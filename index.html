@@ -3290,7 +3290,8 @@
             const nowLabel = snapHH + ':' + snapMM;
             const nowIdx = labels.indexOf(nowLabel);
             if (nowIdx >= 0) {
-                const nowY = predicted[nowIdx] != null ? predicted[nowIdx] : 0;
+                const nowYActual = (hasActual && normalizedActual[nowIdx] != null) ? normalizedActual[nowIdx] : null;
+                const nowY = nowYActual != null ? nowYActual : (predicted[nowIdx] != null ? predicted[nowIdx] : 0);
                 annotations['now_point'] = {
                     type: 'point', xValue: nowIdx, yValue: nowY,
                     backgroundColor: 'rgba(255,235,59,0.9)',
