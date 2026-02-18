@@ -3201,8 +3201,9 @@
         }
 
         const scales = {
-            x: { offset: false, ticks: { color: '#7a8ba3', maxTicksLimit: 24, font: { size: 10 }, callback: function(val, idx) { const lbl = this.getLabelForValue(val); return lbl && lbl.endsWith(':00') ? lbl : null; } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-            y: yScale
+            x: { ticks: { color: '#7a8ba3', maxTicksLimit: 24, font: { size: 10 }, callback: function(val, idx) { const lbl = this.getLabelForValue(val); return lbl && lbl.endsWith(':00') ? lbl : null; } }, grid: { color: 'rgba(255,255,255,0.04)' } },
+            y: yScale,
+            yRight: { type: 'linear', position: 'right', display: true, min: yScale.min, max: yScale.max, ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + '', padding: 0 }, grid: { drawOnChartArea: false }, border: { display: false } }
         };
         if (activeSpecies === 'gapoh' && _pValid.length > 0) {
             const yMax = Math.max(..._pValid);
