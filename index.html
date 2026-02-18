@@ -3804,11 +3804,7 @@
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
-                    tooltip: {
-                        backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
-                        bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
-                        callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} ${speedUnitLabel}` }
-                    },
+                    tooltip: { enabled: false },
                     annotation: { clip: false, annotations }
                 },
                 scales: {
