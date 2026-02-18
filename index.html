@@ -3154,6 +3154,7 @@
         const _t = new Date();
         const _sd = document.getElementById('dateInput').value;
         const _ts = _t.getFullYear() + '-' + String(_t.getMonth()+1).padStart(2,'0') + '-' + String(_t.getDate()).padStart(2,'0');
+        const _isFuture = _sd > _ts;  // 선택 날짜가 오늘 이후(미래)인지
         if (_sd === _ts && labels.length > 0) {
             const _sn = Math.round((_t.getHours() * 60 + _t.getMinutes()) / 10) * 10;
             _tideNowIdx = labels.indexOf(String(Math.floor(_sn / 60)).padStart(2,'0') + ':' + String(_sn % 60).padStart(2,'0'));
@@ -3162,13 +3163,13 @@
         const datasets = [{
             label: '예측 조위 (cm)',
             data: predicted,
-            borderColor: '#4fc3f7',
-            backgroundColor: grad1,
+            borderColor: _isFuture ? 'rgba(148,163,184,0.5)' : '#4fc3f7',
+            backgroundColor: _isFuture ? grayGrad : grad1,
             borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 0,
             order: 0,
             segment: {
-                borderColor: ctx2 => _tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? 'rgba(148,163,184,0.5)' : undefined,
-                backgroundColor: ctx2 => _tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? grayGrad : undefined,
+                borderColor: ctx2 => _isFuture ? 'rgba(148,163,184,0.5)' : (_tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? 'rgba(148,163,184,0.5)' : undefined),
+                backgroundColor: ctx2 => _isFuture ? grayGrad : (_tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? grayGrad : undefined),
             },
         }];
 
@@ -3406,9 +3407,14 @@
             const sunriseTime = (window._sunTimes && window._sunTimes.sunrise) ? window._sunTimes.sunrise : null;
             const sunsetTime = (window._sunTimes && window._sunTimes.sunset) ? window._sunTimes.sunset : null;
             const hasSunInfo = !!(sunriseTime || sunsetTime);
-            let html = '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
-            if (_tideNowIdx >= 0) {
+            let html = '';
+            if (_isFuture) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:rgba(148,163,184,0.5);border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
+            } else {
+                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
+                if (_tideNowIdx >= 0) {
+                    html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:rgba(148,163,184,0.5);border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
+                }
             }
             if (hasNow) {
                 html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
