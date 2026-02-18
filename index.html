@@ -3144,6 +3144,19 @@
         const grad1 = ctx.createLinearGradient(0, 0, 0, 320);
         grad1.addColorStop(0, 'rgba(79,195,247,0.3)');
         grad1.addColorStop(1, 'rgba(79,195,247,0.02)');
+        const grayGrad = ctx.createLinearGradient(0, 0, 0, 320);
+        grayGrad.addColorStop(0, 'rgba(148,163,184,0.15)');
+        grayGrad.addColorStop(1, 'rgba(148,163,184,0.02)');
+
+        // 현재 시간 인덱스 (segment 색상 분리용)
+        let _tideNowIdx = -1;
+        const _t = new Date();
+        const _sd = document.getElementById('dateInput').value;
+        const _ts = _t.getFullYear() + '-' + String(_t.getMonth()+1).padStart(2,'0') + '-' + String(_t.getDate()).padStart(2,'0');
+        if (_sd === _ts && labels.length > 0) {
+            const _sn = Math.round((_t.getHours() * 60 + _t.getMinutes()) / 10) * 10;
+            _tideNowIdx = labels.indexOf(String(Math.floor(_sn / 60)).padStart(2,'0') + ':' + String(_sn % 60).padStart(2,'0'));
+        }
 
         const datasets = [{
             label: '예측 조위 (cm)',
@@ -3152,6 +3165,10 @@
             backgroundColor: grad1,
             borderWidth: 2, fill: true, tension: 0.4, cubicInterpolationMode: 'monotone', pointRadius: 0, pointHoverRadius: 0,
             order: 0,
+            segment: {
+                borderColor: ctx2 => _tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? 'rgba(148,163,184,0.5)' : undefined,
+                backgroundColor: ctx2 => _tideNowIdx >= 0 && ctx2.p1DataIndex > _tideNowIdx ? grayGrad : undefined,
+            },
         }];
 
         const normalizedActual = Array.isArray(actual)
