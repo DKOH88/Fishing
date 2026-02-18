@@ -3800,7 +3800,7 @@
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
-                layout: { padding: { top: 8, left: 4 } },
+                layout: { padding: { top: 8, left: 0, right: 0 } },
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
@@ -3813,7 +3813,7 @@
                 },
                 scales: {
                     x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
-                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' ' + speedUnitLabel }, grid: { color: 'rgba(255,255,255,0.06)' } }
+                    y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + '', padding: 0 }, grid: { color: 'rgba(255,255,255,0.06)' } }
                 }
             },
             plugins: [nowLinePlugin]
