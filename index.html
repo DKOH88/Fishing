@@ -86,6 +86,7 @@
         .current-table { width: 100%; border-collapse: collapse; }
         .current-table th { text-align: left; padding: 8px 12px; font-size: 0.78em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
         .current-table td { padding: 10px 12px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .current-table td.current-speed-value { padding-left: 18px; }
         .current-unit-toggle-btn {
             display: inline-flex;
             align-items: center;
@@ -3648,7 +3649,7 @@
                         return `<tr>
                             <td>${time}</td>
                             <td style="color:${color};">${escapeHTML(item.crdir || '-')}</td>
-                            <td>${speedDisplay.toFixed(1)}</td>
+                            <td class="current-speed-value">${speedDisplay.toFixed(1)}</td>
                             <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
                         </tr>`;
                     }).join('')}
@@ -3705,8 +3706,6 @@
     </script>
 </body>
 </html>
-
-
 
 
 
