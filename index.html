@@ -3187,7 +3187,7 @@
         const _yAll = _pValid.concat(_aValid, _annYValues);
 
         const yScale = {
-            ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: function(v) { return v === this.max ? ['cm', v + ''] : v + ''; }, padding: 0 },
+            ticks: { stepSize: 100, color: '#7a8ba3', font: { size: 11 }, callback: v => v + '', padding: 0 },
             grid: { color: 'rgba(255,255,255,0.06)' }
         };
         if (_yAll.length > 0) {
