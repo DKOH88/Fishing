@@ -3925,6 +3925,21 @@
                     borderColor: 'rgba(56,189,248,0.35)',
                     borderWidth: 1.5, borderDash: [5, 4],
                 };
+                // 조위 기준값 라벨 (좌측 Y축 끝)
+                annotations['now_hline_val'] = {
+                    type: 'label',
+                    xValue: 0,
+                    yValue: nowTideY,
+                    yScaleID: 'yTide',
+                    xAdjust: -5,
+                    content: '(' + nowTideY.toFixed(0) + ')',
+                    color: '#38bdf8',
+                    font: { size: 9, weight: 'bold' },
+                    backgroundColor: 'rgba(17,29,53,0.85)',
+                    padding: { top: 2, bottom: 2, left: 4, right: 4 },
+                    borderRadius: 3,
+                    position: { x: 'start' },
+                };
             }
             // 유속 수평 점선: 현재위치 → 오른쪽(유속축)까지만 (유속 색상)
             if (hasSpeed && nowSpeedRaw != null) {
@@ -3935,6 +3950,21 @@
                     yScaleID: 'ySpeed',
                     borderColor: 'rgba(52,211,153,0.35)',
                     borderWidth: 1.5, borderDash: [5, 4],
+                };
+                // 유속 기준값 라벨 (우측 Y축 끝)
+                annotations['now_hline_speed_val'] = {
+                    type: 'label',
+                    xValue: allLabels.length - 1,
+                    yValue: nowSpeedRaw,
+                    yScaleID: 'ySpeed',
+                    xAdjust: 5,
+                    content: '(' + nowSpeedRaw.toFixed(0) + ')',
+                    color: '#34d399',
+                    font: { size: 9, weight: 'bold' },
+                    backgroundColor: 'rgba(17,29,53,0.85)',
+                    padding: { top: 2, bottom: 2, left: 4, right: 4 },
+                    borderRadius: 3,
+                    position: { x: 'end' },
                 };
             }
             // 현재 수치 라벨 (그래프 최상단, 각 고유 색상)
@@ -3948,7 +3978,7 @@
                     yValue: tideAxisMax,
                     yScaleID: 'yTide',
                     yAdjust: -8,
-                    xAdjust: hasBoth ? -50 : 0,
+                    xAdjust: hasBoth ? -70 : 0,
                     content: '조위 ' + nowTideY.toFixed(0) + 'cm',
                     color: '#38bdf8',
                     font: { size: 10, weight: 'bold' },
@@ -3964,7 +3994,7 @@
                     yValue: tideAxisMax,
                     yScaleID: hasTide ? 'yTide' : 'ySpeed',
                     yAdjust: -8,
-                    xAdjust: hasBoth ? 50 : 0,
+                    xAdjust: hasBoth ? 70 : 0,
                     content: '유속 ' + nowSpeedY.toFixed(1) + 'cm/s',
                     color: '#34d399',
                     font: { size: 10, weight: 'bold' },
