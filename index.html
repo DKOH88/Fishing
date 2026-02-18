@@ -3702,6 +3702,84 @@
         gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
         gradient.addColorStop(1, 'rgba(0,229,255,0.02)');
 
+        // 현재 시간 인덱스 계산
+        let nowIdx = -1;
+        const _today = new Date();
+        const _selDate = document.getElementById('dateInput').value;
+        const _todayStr = _today.getFullYear() + '-' + String(_today.getMonth()+1).padStart(2,'0') + '-' + String(_today.getDate()).padStart(2,'0');
+        if (_selDate === _todayStr && labels.length > 0) {
+            const nowH = _today.getHours(), nowM = _today.getMinutes();
+            const snapped = Math.round((nowH * 60 + nowM) / 10) * 10;
+            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
+            const snapMM = String(snapped % 60).padStart(2, '0');
+            nowIdx = labels.indexOf(snapHH + ':' + snapMM);
+        }
+
+        // annotation 객체 생성
+        const annotations = {};
+        if (nowIdx >= 0 && speeds[nowIdx] != null) {
+            const nowSpeed = speeds[nowIdx];
+            // 노란 포인트
+            annotations['now_point'] = {
+                type: 'point', xValue: nowIdx, yValue: nowSpeed,
+                backgroundColor: 'rgba(255,235,59,0.9)',
+                radius: 5, borderColor: '#fff', borderWidth: 1.5,
+            };
+            // 시각 라벨 (하단)
+            annotations['now_label'] = {
+                type: 'label', xValue: nowIdx,
+                yValue: Math.min(...speeds.filter(v => v != null && v > 0)),
+                yAdjust: 24,
+                content: labels[nowIdx],
+                color: '#ffeb3b',
+                font: { size: 10, weight: 'bold' },
+            };
+            // 수평 점선: 현재위치 → 좌측 Y축까지
+            annotations['now_hline'] = {
+                type: 'line',
+                xMin: 0, xMax: nowIdx,
+                yMin: nowSpeed, yMax: nowSpeed,
+                borderColor: 'rgba(0,229,255,0.35)',
+                borderWidth: 1.5, borderDash: [5, 4],
+            };
+            // 기준값 라벨 (좌측 Y축 끝)
+            annotations['now_hline_val'] = {
+                type: 'label',
+                xValue: 0, yValue: nowSpeed,
+                xAdjust: -5,
+                content: '(' + nowSpeed.toFixed(0) + ')',
+                color: '#00e5ff',
+                font: { size: 9, weight: 'bold' },
+                backgroundColor: 'rgba(17,29,53,0.85)',
+                padding: { top: 2, bottom: 2, left: 4, right: 4 },
+                borderRadius: 3,
+                position: { x: 'start' },
+            };
+        }
+
+        // 수직 점선 플러그인 (현재 위치 → 곡선까지)
+        const nowLinePlugin = {
+            id: 'currentNowLine',
+            afterDraw(chart) {
+                if (nowIdx < 0 || speeds[nowIdx] == null) return;
+                const xScale = chart.scales.x;
+                const yScale = chart.scales.y;
+                const x = xScale.getPixelForValue(nowIdx);
+                const topY = yScale.getPixelForValue(speeds[nowIdx]);
+                const bottomY = chart.chartArea.bottom;
+                const c = chart.ctx;
+                c.save();
+                c.beginPath();
+                c.setLineDash([4, 4]);
+                c.strokeStyle = 'rgba(255,235,59,0.5)';
+                c.lineWidth = 1.2;
+                c.moveTo(x, bottomY);
+                c.lineTo(x, topY);
+                c.stroke();
+                c.restore();
+            }
+        };
+
         currentChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -3715,6 +3793,7 @@
             },
             options: {
                 responsive: true, maintainAspectRatio: false,
+                layout: { padding: { top: 8, left: 4 } },
                 interaction: { intersect: false, mode: 'index' },
                 plugins: {
                     legend: { display: false },
@@ -3722,13 +3801,15 @@
                         backgroundColor: 'rgba(17,29,53,0.95)', titleColor: '#00e5ff',
                         bodyColor: '#e0e6ed', borderColor: '#1e3a5f', borderWidth: 1, padding: 12,
                         callbacks: { label: c => `유속: ${c.parsed.y.toFixed(1)} ${speedUnitLabel}` }
-                    }
+                    },
+                    annotation: { clip: false, annotations }
                 },
                 scales: {
                     x: { ticks: { color: '#7a8ba3', maxTicksLimit: 12, font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.04)' } },
                     y: { ticks: { color: '#7a8ba3', font: { size: 11 }, callback: v => v + ' ' + speedUnitLabel }, grid: { color: 'rgba(255,255,255,0.06)' } }
                 }
-            }
+            },
+            plugins: [nowLinePlugin]
         });
     }
 
