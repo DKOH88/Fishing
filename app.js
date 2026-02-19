@@ -1611,7 +1611,7 @@
     async function fetchTideHighLow() {
         const summaryEl = document.getElementById('tideSummary');
         summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
-        setTideDataStamp('예보 생성시각 조회 중 · 실측 반영시각 조회 중');
+        setTideDataStamp('예보 생성시각 조회 중');
 
         try {
             const stationCode = getStation();
@@ -1641,7 +1641,7 @@
             const fishingPromise = fetchFishingIndexInfo(stationCode, dateStr).catch(() => null);
 
             if (!items || items.length === 0) {
-                setTideDataStamp('예보 생성시각 - · 실측 반영시각 -');
+                setTideDataStamp('예보 생성시각 -');
                 summaryEl.innerHTML = '<div class="error-msg">데이터가 없습니다.</div>';
                 return;
             }
@@ -1709,7 +1709,7 @@
 
             window._hlData = displayItems;
         } catch(e) {
-            setTideDataStamp('예보 생성시각 - · 실측 반영시각 -');
+            setTideDataStamp('예보 생성시각 -');
             summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${escapeHTML(e.message)}</div>`;
         }
     }
@@ -1918,13 +1918,13 @@
 
         const forecastText = forecastRef ? forecastRef.timeLabel : '-';
         const observedText = observedRef ? observedRef.timeLabel : '-';
-        return `예보 생성시각 ${forecastText} · 실측 반영시각 ${observedText}`;
+        return `예보 생성시각 ${forecastText}`;
     }
 
     function setTideDataStamp(text) {
         const el = document.getElementById('tideDataStamp');
         if (!el) return;
-        el.textContent = text || '예보 생성시각 - · 실측 반영시각 -';
+        el.textContent = text || '예보 생성시각 -';
     }
 
     function setTideChartLoadStatus(state, text) {
@@ -3374,12 +3374,18 @@
         }
     }
 
-    function getSpeedColor(speed) {
+    function getSpeedColor(speed, pct) {
+        if (pct != null) {
+            if (pct >= 76) return '#ff6b6b';
+            if (pct >= 51) return '#ffa726';
+            if (pct >= 26) return '#4fc3f7';
+            return '#81c784';
+        }
         const s = parseFloat(speed);
         if (s >= 100) return '#ff6b6b';
         if (s >= 50) return '#ffa726';
         if (s >= 20) return '#4fc3f7';
-        return '#4ecdc4';
+        return '#81c784';
     }
 
     function renderCurrentTable(items, el, fldEbbSummary = null, areaSummary = null) {
@@ -3430,12 +3436,12 @@
                         const speed = parseFloat(item.crsp) || 0;
                         const speedDisplay = convertSpeedByUnit(speed);
                         const pct = (speed / maxSpeed) * 100;
-                        const color = getSpeedColor(speed);
+                        const color = getSpeedColor(speed, pct);
                         return `<tr>
                             <td>${time}</td>
                             <td class="current-dir-col" style="color:${color};">${escapeHTML(item.crdir || '-')}</td>
                             <td class="current-speed-col">${speedDisplay.toFixed(1)}</td>
-                            <td><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
+                            <td><div class="speed-bar-wrap"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div><span class="speed-bar-pct">${Math.round(pct)}%</span></div></td>
                         </tr>`;
                     }).join('')}
                 </tbody>
