@@ -12,7 +12,6 @@ const ENDPOINT_MAP = {
   'tide-level': 'surveyTideLevel/GetSurveyTideLevelApiService',
   'current':    'crntFcstTime/GetCrntFcstTimeApiService',
   'tide-time':  'tideFcstTime/GetTideFcstTimeApiService',
-  'deviation':  'deviationCal/GetDeviationCalApiService',
   'tidebed':    'tidebed/GetTidebedApiService',
   'current-fld-ebb': 'crntFcstFldEbb/GetCrntFcstFldEbbApiService',
 };
@@ -22,7 +21,6 @@ const DEFAULT_PARAMS = {
   'tide-level': { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
   'current':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'tide-time':  { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
-  'deviation':  { numOfRows: '50', pageNo: '1', type: 'json' },
   'tidebed':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'current-fld-ebb': { numOfRows: '20', pageNo: '1', type: 'json' },
 };
@@ -168,12 +166,7 @@ function buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey, passthroughParams 
     url.searchParams.set('obsCode', obsCode);
   }
 
-  if (endpoint === 'deviation') {
-    // 편차계산표는 reqDate가 YYYYMM (6자리)
-    url.searchParams.set('reqDate', reqDate.substring(0, 6));
-  } else {
-    url.searchParams.set('reqDate', reqDate);
-  }
+  url.searchParams.set('reqDate', reqDate);
 
   const defaults = DEFAULT_PARAMS[endpoint];
   Object.entries(defaults).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -729,13 +722,13 @@ export default {
     }
 
     // 기존 공공데이터포털 API 라우팅: GET /api/{endpoint}
-    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|deviation|tidebed|current-fld-ebb)$/);
+    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|tidebed|current-fld-ebb)$/);
     if (!match) {
       return jsonResponse({
         error: 'Not Found',
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
-          '/api/tide-time', '/api/deviation', '/api/tidebed', '/api/current-fld-ebb',
+          '/api/tide-time', '/api/tidebed', '/api/current-fld-ebb',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/lunar',

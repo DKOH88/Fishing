@@ -1569,7 +1569,6 @@
         'surveyTideLevel/GetSurveyTideLevelApiService': '/api/tide-level',
         'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
         'tideFcstTime/GetTideFcstTimeApiService': '/api/tide-time',
-        'deviationCal/GetDeviationCalApiService': '/api/deviation',
         'tidebed/GetTidebedApiService': '/api/tidebed',
         'crntFcstFldEbb/GetCrntFcstFldEbbApiService': '/api/current-fld-ebb',
         'fcstFishingv2/GetFcstFishingApiServicev2': '/api/fishing-index',
@@ -1684,12 +1683,6 @@
                 numOfRows: '20',
                 pageNo: '1'
             });
-            const deviationPromise = apiCall('deviationCal/GetDeviationCalApiService', {
-                obsCode: stationCode,
-                reqDate: dateStr,
-                numOfRows: '50',
-                pageNo: '1'
-            }).then(parseDeviationText).catch(() => '');
             const fishingPromise = fetchFishingIndexInfo(stationCode, dateStr).catch(() => null);
 
             if (!items || items.length === 0) {
@@ -1727,10 +1720,7 @@
                 rangePct
             };
             renderMulddaeCardFromState();
-            const [deviationText, fishingInfo] = await Promise.all([
-                deviationPromise,
-                fishingPromise
-            ]);
+            const fishingInfo = await fishingPromise;
             setTideDataStamp(buildTideDataStampText(items, dateStr));
             window._fishingIndexInfo = fishingInfo;
             renderMulddaeCardFromState();
@@ -1752,7 +1742,7 @@
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
                         <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
-                        <div class="time">${deviationText || ''}</div>
+                        <div class="time"></div>
                     </div>
                 </div>`;
 
@@ -2083,29 +2073,6 @@
 
         if (!fldTime && !ebbTime && fldSpeed == null && ebbSpeed == null) return null;
         return { fldTime, ebbTime, fldSpeed, ebbSpeed };
-    }
-
-    function parseDeviationText(items) {
-        if (!items || items.length === 0) return '';
-        const rec = items[0] || {};
-
-        let raw = extractByKeysCaseInsensitive(rec, [
-            'tdlvOfs', 'deviation', 'deviationVal', 'deviationVl', 'devVal', 'devVl', 'dev'
-        ]);
-        if (raw == null) {
-            for (const k of Object.keys(rec)) {
-                const lk = k.toLowerCase();
-                if (lk.includes('devi') || lk.startsWith('dev')) {
-                    raw = rec[k];
-                    break;
-                }
-            }
-        }
-        const v = toFiniteNumber(raw);
-        if (v == null) return '';
-        const rounded = Math.round(v);
-        const sign = rounded > 0 ? '+' : '';
-        return `편차 ${sign}${rounded}cm`;
     }
 
     function getActiveFishingPlaceName(stationCode) {
