@@ -13,3 +13,4 @@
 ✅ efe3b74 — 어종 판정 규칙 개선 + 검색 엔터 시 목록 닫힘 버그 수정
 ✅ 4e697b7 — 바다낚시지수 API를 KHOA 직접 API로 전환
 ✅ 8b5ce9b — 바다낚시지수 API를 data.go.kr로 전환 (선상만)
+✅ f3aa88d — 바다낚시지수 API 호출을 apiCallRaw로 변경
