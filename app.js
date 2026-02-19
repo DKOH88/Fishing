@@ -153,7 +153,13 @@
         { name: '대천항', lat: 36.32, lon: 126.51, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '무창포', lat: 36.27, lon: 126.54, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
+        { name: '신진도항', lat: 36.50, lon: 126.30, region: '충남', station: 'DT_0067', stationName: '안흥', current: '07TA05', currentName: '안흥' },
+        { name: '마검포항', lat: 36.41, lon: 126.33, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
+        { name: '영목항', lat: 36.38, lon: 126.32, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
+        { name: '구매항', lat: 36.50, lon: 126.27, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
         { name: '안흥외항', lat: 36.67, lon: 126.13, region: '충남', station: 'DT_0067', stationName: '안흥', current: '07TA05', currentName: '안흥' },
+        { name: '남당항', lat: 36.53, lon: 126.44, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
+        { name: '대야도', lat: 36.38, lon: 126.50, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
         { name: '간월도', lat: 36.62, lon: 126.37, region: '충남', station: 'DT_0017', stationName: '대산', current: '17LTC06', currentName: '가로림만입구' },
         { name: '궁리포구', lat: 36.78, lon: 126.12, region: '충남', station: 'DT_0050', stationName: '태안', current: '07TA03', currentName: '태안' },
         { name: '격포항', lat: 35.62, lon: 126.47, region: '전북', station: 'DT_0068', stationName: '위도', current: '15LTC03', currentName: '위도동측' },
@@ -161,15 +167,17 @@
         { name: '비응항', lat: 35.97, lon: 126.62, region: '전북', station: 'DT_0018', stationName: '군산', current: '12JB14', currentName: '군산항입구' },
         { name: '선유도', lat: 35.82, lon: 126.42, region: '전북', station: 'DT_0018', stationName: '군산', current: '06GS07', currentName: '고군산군도' },
         { name: '녹동항', lat: 34.48, lon: 127.08, region: '전남', station: 'DT_0026', stationName: '고흥발포', current: '06YS09', currentName: '거금수도' },
-        { name: '마량항', lat: 34.38, lon: 126.38, region: '전남', station: 'DT_0007', stationName: '목포', current: '22LTC12', currentName: '마량항' },
+        { name: '마량항', lat: 34.38, lon: 126.38, region: '전남', station: 'DT_0031', stationName: '진도', current: '22LTC12', currentName: '마량항' },
         { name: '하효항', lat: 33.23, lon: 126.58, region: '제주', station: 'DT_0010', stationName: '서귀포', current: '08JJ07', currentName: '서귀포' },
         { name: '김녕항', lat: 33.55, lon: 126.77, region: '제주', station: 'DT_0022', stationName: '성산포', current: '08JJ03', currentName: '성산포' },
-        { name: '한림항', lat: 33.42, lon: 126.27, region: '제주', station: 'DT_0004', stationName: '제주', current: '08JJ13', currentName: '애월항북측' },
+        { name: '한림항', lat: 33.42, lon: 126.27, region: '제주', station: 'DT_0023', stationName: '모슬포', current: '08JJ13', currentName: '애월항북측' },
         { name: '대포항', lat: 35.16, lon: 129.18, region: '경남', station: 'DT_0005', stationName: '부산', current: '18LTC13', currentName: '해운대' },
         { name: '구룡포항', lat: 35.98, lon: 129.57, region: '경북', station: 'DT_0091', stationName: '포항', current: '17LTC05', currentName: '울도' },
         { name: '축산항', lat: 36.43, lon: 129.45, region: '경북', station: 'DT_0011', stationName: '후포', current: '17LTC07', currentName: '울도남측' },
         { name: '장호항', lat: 37.28, lon: 129.33, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
         { name: '임원항', lat: 37.25, lon: 129.35, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
+        { name: '백사장항', lat: 37.24, lon: 126.58, region: '경기', station: 'DT_0008', stationName: '안산', current: '16DJ04', currentName: '시화방조제' },
+        { name: '전곡항', lat: 37.15, lon: 126.66, region: '경기', station: 'DT_0008', stationName: '안산', current: '19LTC01', currentName: '화성방조제' },
     ];
     window._selectedPort = null;
 
@@ -3425,7 +3433,7 @@
         el.innerHTML = `
             <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
                 예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong> ·
-                총 ${items.length}건 (10분 간격)${fldEbbLine}${areaLine}
+                ${items[0]?.__timeLabel || '00:00'}~${items[items.length - 1]?.__timeLabel || '00:00'} 기준 <span style="font-size:0.9em">(총 ${items.length}건 · 10분 간격)</span>${fldEbbLine}${areaLine}
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
