@@ -1043,8 +1043,8 @@ export default {
     const tasks = buildPrecacheTasks(PRECACHE_PORTS, dates);
     console.log(`[precache] Starting: ${tasks.length} tasks for ${dates.length} days (${dates[0]}~${dates[dates.length - 1]})`);
 
-    // 배치 실행 (10개 동시, 200ms 간격)
-    const results = await runPrecacheBatches(tasks, apiKey, cache, 10, 200);
+    // 배치 실행 (5개 동시, 300ms 간격 — API 부하 방지)
+    const results = await runPrecacheBatches(tasks, apiKey, cache, 5, 300);
 
     // 바다낚시지수 사전 캐싱
     try {
