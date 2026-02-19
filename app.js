@@ -1400,16 +1400,39 @@
             <div class="mulddae-desc">${desc}</div>
             ${fishingText ? `<div style="font-size:0.76em;color:#8fc4ff;">${fishingText}</div>` : ''}
             <div class="mulddae-species">
-                ${speciesFit.map(s => {
-                    const diffLine = s.diffInfo ? `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${s.diffColor};font-weight:600;">${s.diffInfo.grade}</span> <span>${s.diffInfo.desc}</span></div>` : '';
-                    return `<div style="display:flex;flex-direction:column;">
-                    <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
-                    <span>${s.emoji}</span>
-                    <span style="color:var(--text);font-weight:600;">${s.name}</span>
-                    <span style="color:${s.color};font-weight:700;">${s.grade}</span>
-                    <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
-                </div>${diffLine}</div>`;
-                }).join('')}
+                ${(() => {
+                    // 쭈꾸미·문어는 한 줄로 합침
+                    const jj = speciesFit.find(s => s.name === '쭈꾸미');
+                    const mn = speciesFit.find(s => s.name === '문어');
+                    const go = speciesFit.find(s => s.name === '갑오징어');
+                    let html = '';
+                    // 쭈꾸미 · 문어 합친 카드
+                    if (jj && mn) {
+                        const mergedBg = `${jj.color}15`;
+                        const mergedBorder = `${jj.color}33`;
+                        html += `<div style="display:flex;flex-direction:column;">
+                        <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${mergedBg};border:1px solid ${mergedBorder};border-radius:6px;font-size:0.78em;flex-wrap:wrap;">
+                            <span>🐙</span>
+                            <span style="color:var(--text);font-weight:600;">쭈꾸미</span><span style="color:${jj.color};font-weight:700;">${jj.grade}</span>
+                            <span style="color:var(--muted);margin:0 2px;">·</span>
+                            <span style="color:var(--text);font-weight:600;">문어</span><span style="color:${mn.color};font-weight:700;">${mn.grade}</span>
+                        </div>`;
+                        if (jj.diffInfo) html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
+                        html += `</div>`;
+                    }
+                    // 갑오징어 별도 카드
+                    if (go) {
+                        const diffLine = go.diffInfo ? `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${go.diffColor};font-weight:600;">${go.diffInfo.grade}</span> <span>${go.diffInfo.desc}</span></div>` : '';
+                        html += `<div style="display:flex;flex-direction:column;">
+                        <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${go.color}15;border:1px solid ${go.color}33;border-radius:6px;font-size:0.78em;">
+                            <span>${go.emoji}</span>
+                            <span style="color:var(--text);font-weight:600;">${go.name}</span>
+                            <span style="color:${go.color};font-weight:700;">${go.grade}</span>
+                            <span style="color:var(--muted);font-size:0.85em;">${go.desc}</span>
+                        </div>${diffLine}</div>`;
+                    }
+                    return html;
+                })()}
             </div>`;
     }
 
@@ -2608,6 +2631,8 @@
         jjukkumi: {
             emoji: '🐙', name: '쭈꾸미',
             // 선상: 조금~중물 선호, 중간 조류 최적
+            // 고저차: 300 이하 최상, 300~500 보통, 500 이상 낮음
+            useDiff: true,
             rules: [
                 { cond: (p, n) => n === '조금' || n === '무시', grade: '좋음', desc: '약한 조류, 바닥 탐색 용이', mulddaeDesc: '조류 약한 날 — 바닥 탐색으로 입질 가능, 선상 적합' },
                 { cond: (p, n) => n === '1물' || n === '2물',   grade: '최상', desc: '선상 최적 — 적정 조류', mulddaeDesc: (n) => `${n} — 초들물, 선상 최적 조류` },
@@ -2615,7 +2640,13 @@
                 { cond: (p, n) => p >= 80,                      grade: '보통', desc: '조류 강해 채비 컨트롤 어려움', mulddaeDesc: (n) => `${n} — 조류 강해 채비 컨트롤 주의 (무거운 봉돌 필요)` },
                 { cond: (p, n) => p >= 30,                      grade: '좋음', desc: '적당한 조류', mulddaeDesc: (n) => `${n} — 적당한 조류, 좋은 조건` },
                 { cond: () => true,                             grade: '좋음', desc: '정조에도 바닥 입질 가능', mulddaeDesc: (n) => `${n} — 적당한 조류, 좋은 조건` }
-            ]
+            ],
+            diffGrade: (diff) => {
+                if (diff == null || !Number.isFinite(diff)) return null;
+                if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
+                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+            }
         },
         gapoh: {
             emoji: '🦑', name: '갑오징어',
@@ -2634,21 +2665,30 @@
                 if (diff == null || !Number.isFinite(diff)) return null;
                 if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
                 if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                if (diff > 400 && diff <= 600)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                if (diff > 600)                 return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+                if (diff > 400 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
+                if (diff > 500)                 return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
                 return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 부족` };
             }
         },
         muneo: {
             emoji: '🐙', name: '문어',
             // 정조 전후 활성↑, 초들물 황금시간, 강한 조류 시 은신
+            // 고저차: 쭈꾸미와 동일 (jjukkumi의 diffGrade 공유)
+            useDiff: true,
+            diffGroup: 'jjukkumi',
             rules: [
                 { cond: (p, n) => n === '조금' || n === '무시', grade: '최상', desc: '정조 많아 먹이활동 활발', mulddaeDesc: '정조 많은 날 — 먹이활동 활발, 문어 최적!' },
                 { cond: (p, n) => n === '1물' || n === '2물',   grade: '최상', desc: '초들물 황금시간 많음', mulddaeDesc: (n) => `${n} — 초들물 황금시간 많음, 최적!` },
                 { cond: (p, n) => p >= 80,                      grade: '낮음', desc: '강한 조류, 은신 경향', mulddaeDesc: (n) => `${n} — 강한 조류, 정조 시간대만 노려야` },
                 { cond: (p, n) => p >= 55,                      grade: '보통', desc: '정조 시간대 노려야 함', mulddaeDesc: (n) => `${n} — 정조 전후 시간대 집중 공략` },
                 { cond: () => true,                             grade: '좋음', desc: '약한 조류, 활동 ↑', mulddaeDesc: (n) => `${n} — 약한 조류, 활동 ↑` }
-            ]
+            ],
+            diffGrade: (diff) => {
+                if (diff == null || !Number.isFinite(diff)) return null;
+                if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
+                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+            }
         }
     };
 
