@@ -2325,47 +2325,36 @@
         try {
             const stationCode = getStation();
             const dateStr = getDateStr();
-            let items = [];
-            try {
-                items = await apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+            const geo = getActiveGeoPoint(stationCode);
+
+            // 3개 API 병렬 호출 (순차→병렬: ~1초 단축)
+            const [surveyResult, tideBedResult, tideTimeResult] = await Promise.allSettled([
+                apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
                     obsCode: stationCode,
                     reqDate: dateStr,
                     min: '10',
                     numOfRows: '300',
                     pageNo: '1'
-                });
-            } catch(e) {
-                // 실측 API 실패 시 무시 (미래 날짜 등)
-            }
-
-            let tideBedItems = [];
-            try {
-                const geo = getActiveGeoPoint(stationCode);
-                if (geo) {
-                    tideBedItems = await apiCall('tidebed/GetTidebedApiService', {
-                        lat: geo.lat,
-                        lot: geo.lon,
-                        reqDate: dateStr,
-                        numOfRows: '300',
-                        pageNo: '1'
-                    });
-                }
-            } catch(e) {
-                // tidebed 실패 시 기존 보간 예측 유지
-            }
-
-            let tideTimeItems = [];
-            try {
-                tideTimeItems = await apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                }),
+                geo ? apiCall('tidebed/GetTidebedApiService', {
+                    lat: geo.lat,
+                    lot: geo.lon,
+                    reqDate: dateStr,
+                    numOfRows: '300',
+                    pageNo: '1'
+                }) : Promise.resolve([]),
+                apiCall('tideFcstTime/GetTideFcstTimeApiService', {
                     obsCode: stationCode,
                     reqDate: dateStr,
                     min: '10',
                     numOfRows: '300',
                     pageNo: '1'
-                });
-            } catch(e) {
-                // tideFcstTime 실패 시 무시
-            }
+                }),
+            ]);
+
+            const items = surveyResult.status === 'fulfilled' ? surveyResult.value : [];
+            const tideBedItems = tideBedResult.status === 'fulfilled' ? tideBedResult.value : [];
+            const tideTimeItems = tideTimeResult.status === 'fulfilled' ? tideTimeResult.value : [];
 
             const hlData = window._hlData || [];
             let labels = [], predicted = [], actual = null;
