@@ -24,3 +24,4 @@
 ✅ cf62342 — 편차계산표·TideBED·장단기조석관측 API 엔드포인트 정상화
 ✅ 962a5c6 — 장단기조석관측(ls-term-tide-obs) API 제거
 ✅ 462ecd9 — KHOA API 수정: User-Agent 헤더 추가 및 조화상수 URL 정상화
+✅ 1f6c3c6 — 조화상수(tide-harmonics) API 제거
