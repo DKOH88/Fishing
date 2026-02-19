@@ -8,3 +8,6 @@ id = "cd2306ce540a4402907f4610b1e19368"
 
 [observability]
 enabled = true
+
+[triggers]
+crons = ["0 17 * * *"]   # 17:00 UTC = 02:00 KST (매일 새벽 2시 사전 캐싱)

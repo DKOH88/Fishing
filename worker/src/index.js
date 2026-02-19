@@ -26,6 +26,28 @@ const DEFAULT_PARAMS = {
 };
 
 
+// ==================== 사전 캐싱 대상 포인트 (Cron Trigger) ====================
+const PRECACHE_PORTS = [
+  { name: '오천항',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.38', lon: '126.47' },
+  { name: '안흥항',   obsCode: 'DT_0067', currentCode: '07TA05',  lat: '36.67', lon: '126.13' },
+  { name: '영흥도',   obsCode: 'DT_0043', currentCode: '20LTC04', lat: '37.25', lon: '126.47' },
+  { name: '삼길포항', obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.33', lon: '126.42' },
+  { name: '대천항',   obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.32', lon: '126.51' },
+  { name: '마검포항', obsCode: 'DT_0067', currentCode: '23GA01',  lat: '36.41', lon: '126.33' },
+  { name: '무창포항', obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.27', lon: '126.54' },
+  { name: '영목항',   obsCode: 'DT_0067', currentCode: '23GA01',  lat: '36.38', lon: '126.32' },
+  { name: '인천',     obsCode: 'DT_0001', currentCode: '07GG06',  lat: '37.45', lon: '126.59' },
+  { name: '평택',     obsCode: 'DT_0002', currentCode: '13PT01',  lat: '36.97', lon: '126.82' },
+  { name: '구매항',   obsCode: 'DT_0067', currentCode: '23GA01',  lat: '36.50', lon: '126.27' },
+  { name: '남당항',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.53', lon: '126.44' },
+  { name: '대야도',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.38', lon: '126.50' },
+  { name: '백사장항', obsCode: 'DT_0008', currentCode: '16DJ04',  lat: '37.24', lon: '126.58' },
+  { name: '여수',     obsCode: 'DT_0016', currentCode: '15LTC10', lat: '34.75', lon: '127.77' },
+  { name: '녹동항',   obsCode: 'DT_0026', currentCode: '06YS09',  lat: '34.48', lon: '127.08' },
+  { name: '전곡항',   obsCode: 'DT_0008', currentCode: '19LTC01', lat: '37.15', lon: '126.66' },
+  { name: '홍원항',   obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.30', lon: '126.48' },
+];
+
 const ALLOWED_ORIGINS = new Set([
   'https://fishing-tide.pages.dev',
   'https://fishing-info.pages.dev',
@@ -611,6 +633,180 @@ async function checkRateLimit(request, env, isVisitor = false) {
   return null;
 }
 
+// ==================== Pre-cache Functions (Cron Trigger) ====================
+
+/**
+ * 중복 제거된 사전 캐싱 태스크 목록 생성
+ * 같은 obsCode/currentCode/좌표는 한 번만 호출
+ */
+function buildPrecacheTasks(ports, dates) {
+  const seen = new Set();
+  const tasks = [];
+
+  for (const port of ports) {
+    for (const date of dates) {
+      // tide-hilo (obsCode 기준)
+      const hiloKey = `tide-hilo|${port.obsCode}|${date}`;
+      if (!seen.has(hiloKey)) {
+        seen.add(hiloKey);
+        tasks.push({
+          endpoint: 'tide-hilo',
+          obsCode: port.obsCode,
+          reqDate: date,
+          passthrough: { numOfRows: '20', pageNo: '1' },
+        });
+      }
+
+      // tide-time (obsCode 기준)
+      const timeKey = `tide-time|${port.obsCode}|${date}`;
+      if (!seen.has(timeKey)) {
+        seen.add(timeKey);
+        tasks.push({
+          endpoint: 'tide-time',
+          obsCode: port.obsCode,
+          reqDate: date,
+          passthrough: { min: '10', numOfRows: '300', pageNo: '1' },
+        });
+      }
+
+      // current (currentCode 기준, 1페이지는 min 없이 호출)
+      if (port.currentCode) {
+        const curKey = `current|${port.currentCode}|${date}`;
+        if (!seen.has(curKey)) {
+          seen.add(curKey);
+          tasks.push({
+            endpoint: 'current',
+            obsCode: port.currentCode,
+            reqDate: date,
+            passthrough: { numOfRows: '300', pageNo: '1' },
+          });
+        }
+
+        // current-fld-ebb (currentCode 기준)
+        const fldKey = `current-fld-ebb|${port.currentCode}|${date}`;
+        if (!seen.has(fldKey)) {
+          seen.add(fldKey);
+          tasks.push({
+            endpoint: 'current-fld-ebb',
+            obsCode: port.currentCode,
+            reqDate: date,
+            passthrough: { numOfRows: '20', pageNo: '1' },
+          });
+        }
+      }
+
+      // tidebed (lat/lon 기준)
+      const bedKey = `tidebed|${port.lat}|${port.lon}|${date}`;
+      if (!seen.has(bedKey)) {
+        seen.add(bedKey);
+        tasks.push({
+          endpoint: 'tidebed',
+          obsCode: null,
+          reqDate: date,
+          passthrough: { lat: port.lat, lot: port.lon, numOfRows: '300', pageNo: '1' },
+        });
+      }
+    }
+  }
+
+  return tasks;
+}
+
+/**
+ * 단일 태스크 사전 캐싱: upstream 호출 → Cache API 저장
+ */
+async function precacheOneTask(task, apiKey, cache) {
+  // 캐시 키 생성 (fetch 핸들러와 동일한 방식)
+  let cacheId;
+  if (task.endpoint === 'tidebed') {
+    cacheId = `${task.passthrough.lat}_${task.passthrough.lot}`;
+  } else {
+    cacheId = task.obsCode;
+  }
+
+  const paramSig = makeParamSignature(task.passthrough);
+  const cacheKey = buildCacheKey(task.endpoint, cacheId, task.reqDate, paramSig);
+
+  // 이미 캐시에 있으면 skip
+  const existing = await cache.match(cacheKey);
+  if (existing) return 'hit';
+
+  // upstream API 호출
+  const upstreamUrl = buildUpstreamUrl(
+    task.endpoint,
+    task.obsCode,
+    task.reqDate,
+    apiKey,
+    task.passthrough
+  );
+
+  let upstreamResp;
+  try {
+    upstreamResp = await fetch(upstreamUrl);
+  } catch (e) {
+    return 'fetch_error';
+  }
+
+  if (!upstreamResp.ok) return 'http_error';
+
+  let data;
+  try {
+    data = await upstreamResp.json();
+  } catch (e) {
+    return 'parse_error';
+  }
+
+  // API 레벨 에러면 캐싱하지 않음
+  const resultCode = extractApiLevelResultCode(data);
+  if (resultCode && resultCode !== '00') return 'api_error';
+
+  // 성공 → 캐시 저장
+  const ttl = computeCacheTTL(task.endpoint, task.reqDate);
+  const response = new Response(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${ttl}`,
+      'X-Cache': 'PRECACHE',
+      'X-Cache-TTL': `${ttl}s`,
+    },
+  });
+
+  await cache.put(cacheKey, response);
+  return 'cached';
+}
+
+/**
+ * 배치 실행: concurrency개씩 동시 요청, 배치 간 delayMs 대기
+ */
+async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayMs = 200) {
+  const results = { cached: 0, hit: 0, error: 0, total: tasks.length };
+
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const batch = tasks.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(
+      batch.map(t => precacheOneTask(t, apiKey, cache))
+    );
+
+    for (const r of batchResults) {
+      if (r.status === 'fulfilled') {
+        if (r.value === 'cached') results.cached++;
+        else if (r.value === 'hit') results.hit++;
+        else results.error++;
+      } else {
+        results.error++;
+      }
+    }
+
+    // 배치 간 딜레이 (마지막 배치 제외)
+    if (i + concurrency < tasks.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return results;
+}
+
 // ==================== Main Handler ====================
 
 export default {
@@ -820,5 +1016,70 @@ export default {
     ctx.waitUntil(cache.put(cacheKey, response.clone()));
 
     return response;
+  },
+
+  // ==================== Scheduled Handler (Cron Trigger) ====================
+  async scheduled(event, env, ctx) {
+    const apiKey = env.DATA_GO_KR_API_KEY;
+    if (!apiKey) {
+      console.error('[precache] DATA_GO_KR_API_KEY not set');
+      return;
+    }
+
+    const cache = caches.default;
+
+    // KST 기준 오늘 ~ +7일 날짜 생성
+    const kstNow = getKoreaNow();
+    const dates = [];
+    for (let d = 0; d < 8; d++) {
+      const target = new Date(kstNow.getTime() + d * 24 * 60 * 60 * 1000);
+      const y = target.getUTCFullYear();
+      const m = String(target.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(target.getUTCDate()).padStart(2, '0');
+      dates.push(`${y}${m}${day}`);
+    }
+
+    // 중복 제거된 태스크 목록 생성
+    const tasks = buildPrecacheTasks(PRECACHE_PORTS, dates);
+    console.log(`[precache] Starting: ${tasks.length} tasks for ${dates.length} days (${dates[0]}~${dates[dates.length - 1]})`);
+
+    // 배치 실행 (10개 동시, 200ms 간격)
+    const results = await runPrecacheBatches(tasks, apiKey, cache, 10, 200);
+
+    // 바다낚시지수 사전 캐싱
+    try {
+      const fishCacheKey = buildKhoaCacheKey('fishing-index', `sunsang_${dates[0]}`);
+      const fishCached = await cache.match(fishCacheKey);
+      if (!fishCached) {
+        const fishUrl = buildFishingIndexUrl(apiKey);
+        const fishResp = await fetch(fishUrl);
+        if (fishResp.ok) {
+          const fishData = await fishResp.json();
+          const fishResultCode = extractApiLevelResultCode(fishData);
+          if (!fishResultCode || fishResultCode === '00') {
+            const items = fishData?.body?.items?.item;
+            if (items && Array.isArray(items) && items.length > 0) {
+              const ttl = 3 * 60 * 60;
+              const resp = new Response(JSON.stringify(items), {
+                status: 200,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Cache-Control': `public, max-age=${ttl}`,
+                  'X-Cache': 'PRECACHE',
+                },
+              });
+              await cache.put(fishCacheKey, resp);
+              console.log('[precache] fishing-index cached');
+            }
+          }
+        }
+      } else {
+        console.log('[precache] fishing-index already cached');
+      }
+    } catch (e) {
+      console.error('[precache] fishing-index error:', e.message);
+    }
+
+    console.log(`[precache] Done: cached=${results.cached}, hit=${results.hit}, error=${results.error}, total=${results.total}`);
   }
 };
