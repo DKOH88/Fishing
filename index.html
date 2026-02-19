@@ -84,23 +84,18 @@
         .tide-item.diff .value { color: var(--warn); }
         .tide-item .time { font-size: 0.92em; color: var(--muted); }
         .chart-container { position: relative; height: 320px; }
-        .current-table { width: 100%; border-collapse: collapse; }
-        .current-table th { text-align: left; padding: 8px 12px; font-size: 0.78em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
-        .current-table td { padding: 10px 12px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .current-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .current-table th { text-align: center; padding: 8px; font-size: 0.78em; color: var(--muted); text-transform: uppercase; border-bottom: 1px solid var(--border); }
+        .current-table td { padding: 8px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.04); text-align: center; }
+        .current-table th:nth-child(1),
+        .current-table td:nth-child(1) { width: 60px; white-space: nowrap; }
+        .current-table th:nth-child(2),
+        .current-table td:nth-child(2) { width: 60px; white-space: nowrap; }
         .current-table th.current-speed-col,
-        .current-table td.current-speed-col {
-            width: 120px;
-            white-space: nowrap;
-        }
+        .current-table td.current-speed-col { width: 60px; white-space: nowrap; }
         .current-table td.current-dir-col,
         .current-table td.current-speed-col {
-            font-size: 0.9em;
-        }
-        .current-table th.current-speed-col { text-align: center; }
-        .current-table td.current-speed-col {
-            text-align: center;
-            padding-left: 12px;
-            padding-right: 12px;
+            font-size: 0.85em;
         }
         .current-unit-toggle-btn {
             display: inline-flex;
@@ -332,14 +327,11 @@
         <!-- Current Tab -->
         <div class="tab-content" id="tab-current">
             <div class="card">
-                <div class="card-title">🌀 조류 정보 (유향/유속)</div>
+                <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">🌀 조류 정보 (유향/유속)<button type="button" class="current-unit-toggle-btn" onclick="toggleCurrentSpeedUnit()" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span id="currentInfoUnitLabel">유속 (cm/s)</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button></div>
                 <div id="currentInfo"><div style="text-align:center;color:var(--muted);padding:20px;">조류 예보점과 날짜를 선택 후 조회하세요</div></div>
             </div>
             <div class="card">
-                <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
-                    <span>📈 조류 유속 그래프</span>
-                    <button type="button" class="current-unit-toggle-btn" onclick="toggleCurrentSpeedUnit()" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span id="chartSpeedUnitLabel">유속 (cm/s)</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button>
-                </div>
+                <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">📈 조류 유속 그래프<span id="currentChartUnitLabel" style="font-size:0.98em;color:var(--muted);font-weight:400;">cm/s</span></div>
                 <div class="chart-container"><canvas id="currentChart"></canvas></div>
             </div>
         </div>
@@ -3536,10 +3528,13 @@
     function toggleCurrentSpeedUnit() {
         currentSpeedUnit = currentSpeedUnit === 'cm/s' ? 'kn' : 'cm/s';
         const unitLabel = '유속 (' + getCurrentSpeedUnitLabel() + ')';
-        const chartUnitEl = document.getElementById('chartSpeedUnitLabel');
-        if (chartUnitEl) chartUnitEl.textContent = unitLabel;
+        const shortLabel = getCurrentSpeedUnitLabel();
+        const infoUnitEl = document.getElementById('currentInfoUnitLabel');
+        if (infoUnitEl) infoUnitEl.textContent = unitLabel;
         const combinedUnitEl = document.getElementById('combinedSpeedUnitLabel');
         if (combinedUnitEl) combinedUnitEl.textContent = unitLabel;
+        const chartUnitEl = document.getElementById('currentChartUnitLabel');
+        if (chartUnitEl) chartUnitEl.textContent = shortLabel;
         renderCombinedChart();
         if (!currentViewState || !currentViewState.el) return;
         renderCurrentViews(
@@ -3736,7 +3731,7 @@
             </div>
             <div style="max-height:400px;overflow-y:auto;">
             <table class="current-table">
-                <thead><tr><th>시간</th><th>유향</th><th class="current-speed-col"><button type="button" class="current-unit-toggle-btn" onclick="toggleCurrentSpeedUnit()" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span>유속 (${speedUnitLabel})</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button></th><th>세기</th></tr></thead>
+                <thead><tr><th>시간</th><th>유향</th><th class="current-speed-col">유속</th><th>세기</th></tr></thead>
                 <tbody>
                     ${items.map(item => {
                         const time = item.__timeLabel || extractCurrentTimeLabel(item) || '-';
@@ -3748,7 +3743,7 @@
                             <td>${time}</td>
                             <td class="current-dir-col" style="color:${color};">${escapeHTML(item.crdir || '-')}</td>
                             <td class="current-speed-col">${speedDisplay.toFixed(1)}</td>
-                            <td style="min-width:100px;"><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
+                            <td><div class="speed-bar"><div class="speed-bar-fill" style="width:${pct}%;background:${color};"></div></div></td>
                         </tr>`;
                     }).join('')}
                 </tbody>
@@ -3767,8 +3762,6 @@
         const rawSpeeds = items.map(i => parseFloat(i.crsp) || 0);
         const speeds = rawSpeeds.map((v) => convertSpeedByUnit(v));
         const speedUnitLabel = getCurrentSpeedUnitLabel();
-        const chartUnitEl = document.getElementById('chartSpeedUnitLabel');
-        if (chartUnitEl) chartUnitEl.textContent = '유속 (' + speedUnitLabel + ')';
 
         const gradient = ctx.createLinearGradient(0, 0, 0, 320);
         gradient.addColorStop(0, 'rgba(0,229,255,0.3)');
