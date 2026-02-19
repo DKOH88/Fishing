@@ -2549,9 +2549,9 @@
             // 고저차: 300 이하 최상, 300~500 보통, 500 이상 낮음
             useDiff: true,
             rules: [
-                { cond: (p, n) => p <= 40,                      grade: '최상', desc: '약한 조류, 최적 조건', mulddaeDesc: (n) => `${n} — 약한 조류, 쭈꾸미 최적!` },
-                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: '중간 조류, 할 만함', mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '비추', desc: '조류 강함 — 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p <= 40,                      grade: '최상', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 약한 조류, 쭈꾸미 최적!` },
+                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
@@ -2566,11 +2566,11 @@
             // 고저차: 300~400cm 최상, 200~300/400~600 보통, 그 외 낮음
             useDiff: true,
             rules: [
-                { cond: (p, n) => p >= 40 && p <= 60,           grade: '최상', desc: '적정 조류, 최적', mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
-                { cond: (p, n) => p >= 30 && p < 40,            grade: '보통', desc: '약한 조류, 할 만함', mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
-                { cond: (p, n) => p > 60 && p < 70,             grade: '보통', desc: '조류 강한 편, 할 만함', mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
-                { cond: (p, n) => p < 30,                       grade: '비추', desc: '조류 부족 — 비추천', mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
-                { cond: () => true,                             grade: '비추', desc: '조류 강함 — 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p >= 40 && p <= 60,           grade: '최상', desc: (p) => `적정 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
+                { cond: (p, n) => p >= 30 && p < 40,            grade: '보통', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
+                { cond: (p, n) => p > 60 && p < 70,             grade: '보통', desc: (p) => `조류 강한 편(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
+                { cond: (p, n) => p < 30,                       grade: '비추', desc: (p) => `조류 부족(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
@@ -2588,9 +2588,9 @@
             useDiff: true,
             diffGroup: 'jjukkumi',
             rules: [
-                { cond: (p, n) => p <= 40,                      grade: '최상', desc: '약한 조류, 최적 조건', mulddaeDesc: (n) => `${n} — 약한 조류, 문어 최적!` },
-                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: '중간 조류, 할 만함', mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '비추', desc: '조류 강함 — 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p <= 40,                      grade: '최상', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 약한 조류, 문어 최적!` },
+                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
@@ -2608,7 +2608,8 @@
         for (const rule of species.rules) {
             if (rule.cond(pct, num)) {
                 const mulddaeText = typeof rule.mulddaeDesc === 'function' ? rule.mulddaeDesc(num) : rule.mulddaeDesc;
-                const result = { grade: rule.grade, color: GRADE_COLORS[rule.grade], desc: rule.desc, mulddaeDesc: mulddaeText };
+                const descText = typeof rule.desc === 'function' ? rule.desc(pct) : rule.desc;
+                const result = { grade: rule.grade, color: GRADE_COLORS[rule.grade], desc: descText, mulddaeDesc: mulddaeText };
                 // 고저차 기반 보조 판정
                 if (species.useDiff && species.diffGrade && diff != null) {
                     const dg = species.diffGrade(diff);
