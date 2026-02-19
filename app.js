@@ -1417,6 +1417,7 @@
                             <span style="color:var(--muted);margin:0 2px;">·</span>
                             <span style="color:var(--text);font-weight:600;">문어</span><span style="color:${mn.color};font-weight:700;">${mn.grade}</span>
                         </div>`;
+                        html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${jj.color};font-weight:600;">${jj.grade}</span> <span>${jj.desc}</span></div>`;
                         if (jj.diffInfo) html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
                         html += `</div>`;
                     }
@@ -1428,8 +1429,8 @@
                             <span>${go.emoji}</span>
                             <span style="color:var(--text);font-weight:600;">${go.name}</span>
                             <span style="color:${go.color};font-weight:700;">${go.grade}</span>
-                            <span style="color:var(--muted);font-size:0.85em;">${go.desc}</span>
-                        </div>${diffLine}</div>`;
+                        </div>
+                        <div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${go.color};font-weight:600;">${go.grade}</span> <span>${go.desc}</span></div>${diffLine}</div>`;
                     }
                     return html;
                 })()}
@@ -2623,7 +2624,7 @@
     // ── 어종별 pct 판정 통합 상수 ──
     // grade 색상 (한 곳에서 관리)
     const GRADE_COLORS = {
-        '최상': '#69f0ae', '좋음': '#4fc3f7', '보통': '#ffa726', '낮음': '#ff6b6b'
+        '최상': '#69f0ae', '좋음': '#4fc3f7', '보통': '#ffa726', '비추': '#ff6b6b'
     };
 
     // 어종별 판정 규칙 (임계값 + 설명 통합)
@@ -2636,13 +2637,13 @@
             rules: [
                 { cond: (p, n) => p <= 40,                      grade: '최상', desc: '약한 조류, 최적 조건', mulddaeDesc: (n) => `${n} — 약한 조류, 쭈꾸미 최적!` },
                 { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: '중간 조류, 할 만함', mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '낮음', desc: '조류 강함, 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: () => true,                             grade: '비추', desc: '조류 강함, 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
                 if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
                 if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
             }
         },
         gapoh: {
@@ -2651,20 +2652,20 @@
             // 고저차: 300~400cm 최상, 200~300/400~600 보통, 그 외 낮음
             useDiff: true,
             rules: [
-                { cond: (p, n) => n === '조금' || n === '무시', grade: '낮음', desc: '조류 부족, 활성 낮음', mulddaeDesc: '조류 부족한 날 — 활성 낮음, 출조 비추천' },
+                { cond: (p, n) => n === '조금' || n === '무시', grade: '비추', desc: '조류 부족, 활성 낮음', mulddaeDesc: '조류 부족한 날 — 활성 낮음, 출조 비추천' },
                 { cond: (p, n) => p >= 55 && p <= 80,           grade: '최상', desc: '3~6물 적정 조류, 최적', mulddaeDesc: (n) => `${n} — 3~6물 적정 조류, 갑오징어 최적!` },
                 { cond: (p, n) => p > 80 && p <= 95,            grade: '보통', desc: '7~9물 조류 강함, 할 만함', mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
-                { cond: (p, n) => p > 95,                       grade: '낮음', desc: '사리 전후, 조류 너무 강함', mulddaeDesc: (n) => `${n} — 조류 과다, 갑오징어 출조 비추천` },
+                { cond: (p, n) => p > 95,                       grade: '비추', desc: '사리 전후, 조류 너무 강함', mulddaeDesc: (n) => `${n} — 조류 과다, 갑오징어 출조 비추천` },
                 { cond: (p, n) => p >= 35,                      grade: '보통', desc: '약한 조류, 정조 시간 주의', mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
-                { cond: () => true,                             grade: '낮음', desc: '조류 부족', mulddaeDesc: '조류 부족' }
+                { cond: () => true,                             grade: '비추', desc: '조류 부족', mulddaeDesc: '조류 부족' }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
                 if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
                 if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
                 if (diff > 400 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                if (diff > 500)                 return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
-                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 부족` };
+                if (diff > 500)                 return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 부족` };
             }
         },
         muneo: {
@@ -2676,13 +2677,13 @@
             rules: [
                 { cond: (p, n) => p <= 40,                      grade: '최상', desc: '약한 조류, 최적 조건', mulddaeDesc: (n) => `${n} — 약한 조류, 문어 최적!` },
                 { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: '중간 조류, 할 만함', mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '낮음', desc: '조류 강함, 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: () => true,                             grade: '비추', desc: '조류 강함, 비추천', mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
                 if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
                 if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
             }
         }
     };
