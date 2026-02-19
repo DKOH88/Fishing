@@ -289,9 +289,8 @@ function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, sca
 }
 
 function buildKhoaTideHarmonicsUrl(obsCode, serviceKey) {
-  const url = new URL(`${KHOA_BASE}/DataType/search.do`);
+  const url = new URL(`${KHOA_BASE}/tideObsHar/search.do`);
   url.searchParams.set('ServiceKey', serviceKey);
-  url.searchParams.set('DataType', 'tideObsHar');
   url.searchParams.set('ObsCode', obsCode);
   url.searchParams.set('ResultType', 'json');
   return url.toString();
@@ -328,7 +327,9 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     const upstreamUrl = buildKhoaCurrentPointUrl(lat, lon, date, khoaKey);
     let upstreamResp;
     try {
-      upstreamResp = await fetch(upstreamUrl);
+      upstreamResp = await fetch(upstreamUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
+      });
     } catch (e) {
       return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
     }
@@ -393,7 +394,9 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     const upstreamUrl = buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, scale, khoaKey);
     let upstreamResp;
     try {
-      upstreamResp = await fetch(upstreamUrl);
+      upstreamResp = await fetch(upstreamUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
+      });
     } catch (e) {
       return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
     }
@@ -445,7 +448,9 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     const upstreamUrl = buildKhoaTideHarmonicsUrl(obsCode, khoaKey);
     let upstreamResp;
     try {
-      upstreamResp = await fetch(upstreamUrl);
+      upstreamResp = await fetch(upstreamUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
+      });
     } catch (e) {
       return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
     }
