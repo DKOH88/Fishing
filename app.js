@@ -293,7 +293,20 @@
             item.name.toLowerCase().includes(q) ||
             item.regionLabel.toLowerCase().includes(q) ||
             (item.code && item.code.toLowerCase().includes(q))
-        ).slice(0, 15);
+        ).sort((a, b) => {
+            const aName = a.name.toLowerCase();
+            const bName = b.name.toLowerCase();
+            const aExact = aName === q;
+            const bExact = bName === q;
+            if (aExact !== bExact) return aExact ? -1 : 1;
+            const aStarts = aName.startsWith(q);
+            const bStarts = bName.startsWith(q);
+            if (aStarts !== bStarts) return aStarts ? -1 : 1;
+            const aIncludes = aName.includes(q);
+            const bIncludes = bName.includes(q);
+            if (aIncludes !== bIncludes) return aIncludes ? -1 : 1;
+            return 0;
+        }).slice(0, 15);
     }
 
     function highlightMatch(text, query) {
@@ -396,6 +409,26 @@
 
         if (item.type === 'crnt') {
             currentSel.value = item.code;
+        } else if (item.type === 'obs') {
+            // 관측소→조류예보점 기본 매핑 (가장 가까운 예보점 수동 지정)
+            const OBS_TO_CURRENT = {
+                'DT_0002': '19LTC01',  // 평택 → 화성방조제
+                'DT_0016': '18LTC06',  // 여수 → 여수해협
+                'DT_0043': '20LTC04',  // 영흥도 → 영흥도서측
+                'DT_0052': '17LTC01',  // 인천송도 → 인천신항입구
+            };
+            const mapped = OBS_TO_CURRENT[item.code];
+            if (mapped && region.currents.some(c => c[0] === mapped)) {
+                currentSel.value = mapped;
+            } else {
+                // 폴백: 같은 이름의 조류 예보점 자동 매칭 (정확→접두사 순)
+                const exact = region.currents.find(c => c[1] === item.name);
+                const prefix = !exact && region.currents.find(c => c[1].startsWith(item.name));
+                const match = exact || prefix;
+                if (match) {
+                    currentSel.value = match[0];
+                }
+            }
         }
         window._selectedPort = null;
 
