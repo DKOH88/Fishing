@@ -1358,7 +1358,7 @@
             : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
             : mulddae.name === '사리' ? '사리 전후 — 조차가 점차 줄어듭니다'
             : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
-        const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct);
+        const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct, diff);
 
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
         const pctText = pctValue != null ? `${pctValue}%` : '-';
@@ -1400,12 +1400,16 @@
             <div class="mulddae-desc">${desc}</div>
             ${fishingText ? `<div style="font-size:0.76em;color:#8fc4ff;">${fishingText}</div>` : ''}
             <div class="mulddae-species">
-                ${speciesFit.map(s => `<div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
+                ${speciesFit.map(s => {
+                    const diffLine = s.diffInfo ? `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${s.diffColor};font-weight:600;">${s.diffInfo.grade}</span> <span>${s.diffInfo.desc}</span></div>` : '';
+                    return `<div style="display:flex;flex-direction:column;">
+                    <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${s.color}15;border:1px solid ${s.color}33;border-radius:6px;font-size:0.78em;">
                     <span>${s.emoji}</span>
                     <span style="color:var(--text);font-weight:600;">${s.name}</span>
                     <span style="color:${s.color};font-weight:700;">${s.grade}</span>
                     <span style="color:var(--muted);font-size:0.85em;">${s.desc}</span>
-                </div>`).join('')}
+                </div>${diffLine}</div>`;
+                }).join('')}
             </div>`;
     }
 
@@ -2615,14 +2619,25 @@
         },
         gapoh: {
             emoji: '🦑', name: '갑오징어',
-            // 선상: 3~8물 적정 조류 최적, 정조 시 활성 낮음
+            // 선상: 3~6물 최적, 7~9물 보통, 사리(10물 이상) 및 조금은 비추
+            // 고저차: 300~400cm 최상, 200~300/400~600 보통, 그 외 낮음
+            useDiff: true,
             rules: [
                 { cond: (p, n) => n === '조금' || n === '무시', grade: '낮음', desc: '조류 부족, 활성 낮음', mulddaeDesc: '조류 부족한 날 — 활성 낮음, 출조 비추천' },
-                { cond: (p, n) => p >= 55 && p <= 85,           grade: '최상', desc: '3~8물 적정 조류, 최적', mulddaeDesc: (n) => `${n} — 3~8물 적정 조류, 갑오징어 최적!` },
-                { cond: (p, n) => p >= 85,                      grade: '좋음', desc: '조류 강하지만 활성 있음', mulddaeDesc: (n) => `${n} — 강한 조류, 장애물 뒤 매복 포인트 공략` },
+                { cond: (p, n) => p >= 55 && p <= 80,           grade: '최상', desc: '3~6물 적정 조류, 최적', mulddaeDesc: (n) => `${n} — 3~6물 적정 조류, 갑오징어 최적!` },
+                { cond: (p, n) => p > 80 && p <= 95,            grade: '보통', desc: '7~9물 조류 강함, 할 만함', mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
+                { cond: (p, n) => p > 95,                       grade: '낮음', desc: '사리 전후, 조류 너무 강함', mulddaeDesc: (n) => `${n} — 조류 과다, 갑오징어 출조 비추천` },
                 { cond: (p, n) => p >= 35,                      grade: '보통', desc: '약한 조류, 정조 시간 주의', mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
                 { cond: () => true,                             grade: '낮음', desc: '조류 부족', mulddaeDesc: '조류 부족' }
-            ]
+            ],
+            diffGrade: (diff) => {
+                if (diff == null || !Number.isFinite(diff)) return null;
+                if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
+                if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
+                if (diff > 400 && diff <= 600)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
+                if (diff > 600)                 return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 과다` };
+                return { grade: '낮음', desc: `고저차 ${Math.round(diff)}cm — 조차 부족` };
+            }
         },
         muneo: {
             emoji: '🐙', name: '문어',
@@ -2637,23 +2652,32 @@
         }
     };
 
-    // 통합 판정 함수: 어종 키 + pct + 물때이름 → { grade, color, desc, mulddaeDesc }
-    function getSpeciesSuitability(speciesKey, pct, num) {
+    // 통합 판정 함수: 어종 키 + pct + 물때이름 + 고저차(diff) → { grade, color, desc, mulddaeDesc, diffInfo }
+    function getSpeciesSuitability(speciesKey, pct, num, diff) {
         const species = SPECIES_RULES[speciesKey];
         if (!species) return null;
         for (const rule of species.rules) {
             if (rule.cond(pct, num)) {
                 const mulddaeText = typeof rule.mulddaeDesc === 'function' ? rule.mulddaeDesc(num) : rule.mulddaeDesc;
-                return { grade: rule.grade, color: GRADE_COLORS[rule.grade], desc: rule.desc, mulddaeDesc: mulddaeText };
+                const result = { grade: rule.grade, color: GRADE_COLORS[rule.grade], desc: rule.desc, mulddaeDesc: mulddaeText };
+                // 고저차 기반 보조 판정
+                if (species.useDiff && species.diffGrade && diff != null) {
+                    const dg = species.diffGrade(diff);
+                    if (dg) {
+                        result.diffInfo = dg;
+                        result.diffColor = GRADE_COLORS[dg.grade];
+                    }
+                }
+                return result;
             }
         }
         return null;
     }
 
     // 물때(몇물)별 어종 적합도 — 물때 카드에 표시
-    function getSpeciesByMulddae(mulddaeNum, mulddaePct) {
+    function getSpeciesByMulddae(mulddaeNum, mulddaePct, diff) {
         return Object.entries(SPECIES_RULES).map(([key, sp]) => {
-            const suit = getSpeciesSuitability(key, mulddaePct, mulddaeNum);
+            const suit = getSpeciesSuitability(key, mulddaePct, mulddaeNum, diff);
             return { emoji: sp.emoji, name: sp.name, ...suit };
         });
     }
