@@ -177,8 +177,14 @@ function extractApiLevelResultMsg(data) {
   return data?.header?.resultMsg || data?.response?.header?.resultMsg || null;
 }
 
-function buildFishingIndexUrl(khoaKey, type = 'BF') {
-  return `${KHOA_BASE}/fcIndexOfType/search.do?ServiceKey=${encodeURIComponent(khoaKey)}&Type=${encodeURIComponent(type)}&ResultType=json`;
+function buildFishingIndexUrl(apiKey) {
+  const url = new URL(`${UPSTREAM_BASE}/fcstFishingv2/GetFcstFishingApiServicev2`);
+  url.searchParams.set('serviceKey', apiKey);
+  url.searchParams.set('type', 'json');
+  url.searchParams.set('gubun', '선상');
+  url.searchParams.set('numOfRows', '300');
+  url.searchParams.set('pageNo', '1');
+  return url.toString();
 }
 
 // ==================== KHOA Helpers ====================
@@ -700,16 +706,14 @@ export default {
       return handleLunarRequest(url, env, ctx, request);
     }
 
-    // 바다낚시지수 API (KHOA 선상낚시): GET /api/fishing-index
+    // 바다낚시지수 API (선상): GET /api/fishing-index
     if (url.pathname === '/api/fishing-index') {
-      const khoaKey = env.KHOA_SERVICE_KEY;
-      if (!khoaKey) {
-        return jsonResponse({ error: 'Server configuration error: KHOA API key not set' }, 500, request);
+      const apiKey = env.DATA_GO_KR_API_KEY;
+      if (!apiKey) {
+        return jsonResponse({ error: 'Server configuration error: API key not set' }, 500, request);
       }
 
-      const VALID_FISHING_TYPES = new Set(['BF', 'SF', 'BE', 'SD', 'SK', 'SS', 'TL', 'SR', 'ST']);
-      const fishingType = VALID_FISHING_TYPES.has(url.searchParams.get('type')) ? url.searchParams.get('type') : 'BF';
-      const cacheKey = buildKhoaCacheKey('fishing-index', `${fishingType}_${getTodayStr()}`);
+      const cacheKey = buildKhoaCacheKey('fishing-index', `sunsang_${getTodayStr()}`);
       const cache = caches.default;
       const cached = await cache.match(cacheKey);
       if (cached) {
@@ -718,34 +722,39 @@ export default {
         return resp;
       }
 
-      const upstreamUrl = buildFishingIndexUrl(khoaKey, fishingType);
+      const upstreamUrl = buildFishingIndexUrl(apiKey);
       let upstreamResp;
       try {
-        upstreamResp = await fetch(upstreamUrl, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideProxy/1.0)' }
-        });
+        upstreamResp = await fetch(upstreamUrl);
       } catch (e) {
-        return jsonResponse({ error: 'KHOA fishing index fetch failed', detail: e.message }, 502, request);
+        return jsonResponse({ error: 'Fishing index fetch failed', detail: e.message }, 502, request);
       }
 
       if (!upstreamResp.ok) {
-        return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
+        return jsonResponse({ error: `Upstream returned HTTP ${upstreamResp.status}` }, 502, request);
       }
 
       let data;
       try {
         data = await upstreamResp.json();
       } catch (e) {
-        return jsonResponse({ error: 'Failed to parse KHOA fishing index response' }, 502, request);
+        return jsonResponse({ error: 'Failed to parse fishing index response' }, 502, request);
       }
 
-      if (!data.result || !data.result.data) {
-        return jsonResponse({ error: 'KHOA fishing index returned no data', raw: data }, 400, request);
+      const resultCode = extractApiLevelResultCode(data);
+      if (resultCode && resultCode !== '00') {
+        const resultMsg = extractApiLevelResultMsg(data) || 'Unknown error';
+        return jsonResponse({ error: `API error: ${resultMsg}`, resultCode }, 400, request);
+      }
+
+      const items = data?.body?.items?.item;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return jsonResponse({ error: 'Fishing index returned no data' }, 400, request);
       }
 
       // 3시간 캐싱 (예보 데이터, 하루 몇 번 갱신)
       const ttl = 3 * 60 * 60;
-      const response = new Response(JSON.stringify(data), {
+      const response = new Response(JSON.stringify(items), {
         status: 200,
         headers: {
           'Content-Type': 'application/json',

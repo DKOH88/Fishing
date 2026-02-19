@@ -1373,7 +1373,6 @@
             const gradeText = fishingInfo.grade ? `${escapeHTML(fishingInfo.grade)}` : '';
             const placeText = fishingInfo.placeName ? ` ${escapeHTML(fishingInfo.placeName)}` : '';
             const detailParts = [];
-            if (fishingInfo.weather) detailParts.push(`${escapeHTML(fishingInfo.weather)}`);
             if (fishingInfo.airTemp) detailParts.push(`기온 ${escapeHTML(fishingInfo.airTemp)}℃`);
             if (fishingInfo.waterTemp) detailParts.push(`수온 ${escapeHTML(fishingInfo.waterTemp)}℃`);
             if (fishingInfo.waveHeight) detailParts.push(`파고 ${escapeHTML(fishingInfo.waveHeight)}m`);
@@ -2198,8 +2197,8 @@
         // 오래된 데이터 무시 (7일 이상)
         const now = new Date();
         const validItems = items.filter(it => {
-            if (!it.date) return false;
-            const d = new Date(it.date);
+            if (!it.predcYmd) return false;
+            const d = new Date(it.predcYmd);
             return !isNaN(d.getTime()) && (now - d) < 7 * 24 * 60 * 60 * 1000;
         });
         if (validItems.length === 0) return null;
@@ -2208,9 +2207,9 @@
         let rec = null;
         if (placeName) {
             const normPlace = placeName.replace(/\s/g, '');
-            rec = validItems.find(it => it.name && it.name.replace(/\s/g, '') === normPlace);
-            if (!rec) rec = validItems.find(it => it.name && it.name.includes(placeName));
-            if (!rec) rec = validItems.find(it => it.name && placeName.includes(it.name));
+            rec = validItems.find(it => it.seafsPstnNm && it.seafsPstnNm.replace(/\s/g, '') === normPlace);
+            if (!rec) rec = validItems.find(it => it.seafsPstnNm && it.seafsPstnNm.includes(placeName));
+            if (!rec) rec = validItems.find(it => it.seafsPstnNm && placeName.includes(it.seafsPstnNm));
         }
         // 매칭 실패 시 위치 기반 가장 가까운 항목 또는 첫 번째 항목
         if (!rec) {
@@ -2219,7 +2218,7 @@
                 let minDist = Infinity;
                 for (const it of validItems) {
                     const lat = parseFloat(it.lat);
-                    const lon = parseFloat(it.lon);
+                    const lon = parseFloat(it.lot);
                     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
                     const dist = Math.sqrt((lat - geo.lat) ** 2 + (lon - geo.lon) ** 2);
                     if (dist < minDist) { minDist = dist; rec = it; }
@@ -2228,16 +2227,21 @@
         }
         if (!rec) rec = validItems[0];
 
-        const grade = rec.total_score ? String(rec.total_score) : '';
-        const tideTimeScore = rec.tide_time_score || '';
-        const name = rec.name || '';
-        const date = rec.date || '';
-        const time = rec.time || '';
-        const airTemp = rec.air_temp || '';
-        const weather = rec.weather || '';
-        const waveHeight = rec.wave_height || '';
-        const waterTemp = rec.water_temp || '';
-        const windSpeed = rec.wind_speed || '';
+        const grade = rec.totalIndex || '';
+        const tideTimeScore = rec.tdlvHrScr != null && rec.tdlvHrScr !== -999 ? String(rec.tdlvHrScr) : '';
+        const name = rec.seafsPstnNm || '';
+        const date = rec.predcYmd || '';
+        const baseTime = rec.predcNoonSeCd || '';
+        const formatRange = (min, max) => {
+            if (min == null && max == null) return '';
+            if (min === max || max == null) return String(min);
+            if (min == null) return String(max);
+            return `${min}~${max}`;
+        };
+        const airTemp = formatRange(rec.minArtmp, rec.maxArtmp);
+        const waveHeight = formatRange(rec.minWvhgt, rec.maxWvhgt);
+        const waterTemp = formatRange(rec.minWtem, rec.maxWtem);
+        const windSpeed = formatRange(rec.minWspd, rec.maxWspd);
 
         if (!grade) return null;
 
@@ -2248,11 +2252,10 @@
             grade,
             tideTimeScore,
             airTemp,
-            weather,
             waveHeight,
             waterTemp,
             windSpeed,
-            baseTime: time,
+            baseTime,
         };
     }
 
