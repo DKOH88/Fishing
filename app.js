@@ -2261,7 +2261,7 @@
 
     async function fetchFishingIndexInfo(stationCode, dateStr) {
         const placeName = getActiveFishingPlaceName(stationCode);
-        const items = await apiCall('fcstFishingv2/GetFcstFishingApiServicev2', {});
+        const items = await apiCallRaw('/api/fishing-index', {});
         return parseFishingIndexData(items, placeName, stationCode);
     }
 
