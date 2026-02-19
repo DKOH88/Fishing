@@ -1377,8 +1377,9 @@
             if (fishingInfo.waterTemp) detailParts.push(`수온 ${escapeHTML(fishingInfo.waterTemp)}℃`);
             if (fishingInfo.waveHeight) detailParts.push(`파고 ${escapeHTML(fishingInfo.waveHeight)}m`);
             if (fishingInfo.windSpeed) detailParts.push(`풍속 ${escapeHTML(fishingInfo.windSpeed)}m/s`);
-            const detailText = detailParts.length > 0 ? ` · ${detailParts.join(' / ')}` : '';
-            fishingText = `🎣 바다낚시지수(선상) ${gradeText}${placeText}${detailText}`;
+            const detailText = detailParts.length > 0 ? detailParts.join(' / ') : '';
+            fishingText = `<div class="fishing-index-btn" onclick="this.classList.toggle('open')">🎣 바다낚시지수(선상) ${gradeText}${placeText} <span class="fishing-arrow">▶</span></div>`
+                + (detailText ? `<div class="fishing-index-detail">${detailText}</div>` : '');
         }
 
         mulddaeEl.innerHTML = `
@@ -1396,7 +1397,7 @@
                 </div>
             </div>
             <div class="mulddae-desc">${desc}</div>
-            ${fishingText ? `<div style="font-size:0.76em;color:#8fc4ff;">${fishingText}</div>` : ''}
+            ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
             <div class="mulddae-species">
                 ${(() => {
                     // 쭈꾸미·문어는 한 줄로 합침
