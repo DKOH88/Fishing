@@ -2555,9 +2555,9 @@
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
-                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다 — 비추천` };
+                if (diff <= 300)                return { grade: '최상', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 최적` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
+                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
             }
         },
         gapoh: {
@@ -2574,11 +2574,11 @@
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
-                if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                if (diff > 400 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                if (diff > 500)                 return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다 — 비추천` };
-                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 부족 — 비추천` };
+                if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 적당(${Math.round(diff)}cm) ㅡ 최적` };
+                if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
+                if (diff > 400 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
+                if (diff > 500)                 return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
+                return { grade: '비추', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 비추천` };
             }
         },
         muneo: {
@@ -2594,9 +2594,9 @@
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff <= 300)                return { grade: '최상', desc: `고저차 ${Math.round(diff)}cm — 최적 조건` };
-                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 ${Math.round(diff)}cm — 할 만한 조건` };
-                return { grade: '비추', desc: `고저차 ${Math.round(diff)}cm — 조차 과다 — 비추천` };
+                if (diff <= 300)                return { grade: '최상', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 최적` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
+                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
             }
         }
     };
