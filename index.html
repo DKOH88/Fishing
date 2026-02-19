@@ -347,7 +347,7 @@
         <!-- Combined Tab -->
         <div class="tab-content" id="tab-combined">
             <div class="card" style="padding-bottom:12px;">
-                <div class="card-title" style="margin-bottom:4px;">📊 조위-유속 복합 그래프</div>
+                <div class="card-title" style="margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;">📊 조위-유속 복합 그래프<button type="button" class="current-unit-toggle-btn" onclick="toggleCurrentSpeedUnit()" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span id="combinedSpeedUnitLabel">유속 (cm/s)</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button></div>
                 <div id="combinedChartLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:2px;padding:3px 6px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.75em;color:var(--muted);align-items:center;"></div>
                 <div class="chart-container" style="height:380px;"><canvas id="combinedChart"></canvas></div>
                 <div id="combinedChartInfo" style="margin-top:10px;font-size:0.76em;color:var(--muted);text-align:center;letter-spacing:0.02em;"></div>
@@ -3535,8 +3535,12 @@
 
     function toggleCurrentSpeedUnit() {
         currentSpeedUnit = currentSpeedUnit === 'cm/s' ? 'kn' : 'cm/s';
+        const unitLabel = '유속 (' + getCurrentSpeedUnitLabel() + ')';
         const chartUnitEl = document.getElementById('chartSpeedUnitLabel');
-        if (chartUnitEl) chartUnitEl.textContent = '유속 (' + getCurrentSpeedUnitLabel() + ')';
+        if (chartUnitEl) chartUnitEl.textContent = unitLabel;
+        const combinedUnitEl = document.getElementById('combinedSpeedUnitLabel');
+        if (combinedUnitEl) combinedUnitEl.textContent = unitLabel;
+        renderCombinedChart();
         if (!currentViewState || !currentViewState.el) return;
         renderCurrentViews(
             currentViewState.items,
@@ -3910,9 +3914,9 @@
         const tideLabels = chartData && chartData.labels ? chartData.labels : [];
         const tidePredicted = chartData && chartData.predicted ? chartData.predicted : [];
 
-        // 유속 데이터 준비
+        // 유속 데이터 준비 (단위 변환 적용)
         const currentLabels = currentData.map(i => i.__timeLabel || extractCurrentTimeLabel(i) || '-');
-        const currentSpeeds = currentData.map(i => parseFloat(i.crsp) || 0);
+        const currentSpeeds = currentData.map(i => convertSpeedByUnit(parseFloat(i.crsp) || 0));
 
         // 공통 시간 라벨 생성 (합집합, 정렬)
         const allLabelsSet = new Set([...tideLabels, ...currentLabels]);
@@ -3997,7 +4001,7 @@
         // 유속: 라인 (앞쪽 — fill 없이 깔끔한 선)
         if (hasSpeed) {
             datasets.push({
-                label: '유속 (cm/s)',
+                label: '유속 (' + getCurrentSpeedUnitLabel() + ')',
                 data: speedValues,
                 borderColor: _isCombinedFuture ? 'rgba(52,211,153,0.2)' : '#34d399',
                 backgroundColor: 'transparent',
@@ -4030,14 +4034,21 @@
             };
         }
         if (hasSpeed) {
-            const rawSpeedMax = Math.ceil(speedMax / 20) * 20 + 20;
-            const speedStep = rawSpeedMax <= 60 ? 10 : rawSpeedMax <= 120 ? 20 : rawSpeedMax <= 300 ? 50 : 100;
-            const speedAxisMax = Math.ceil(rawSpeedMax / speedStep) * speedStep;
+            let rawSpeedMax, speedStep, speedAxisMax;
+            if (currentSpeedUnit === 'kn') {
+                rawSpeedMax = Math.ceil(speedMax) + 0.5;
+                speedStep = rawSpeedMax <= 2 ? 0.5 : rawSpeedMax <= 5 ? 1 : 2;
+                speedAxisMax = Math.ceil(rawSpeedMax / speedStep) * speedStep;
+            } else {
+                rawSpeedMax = Math.ceil(speedMax / 20) * 20 + 20;
+                speedStep = rawSpeedMax <= 60 ? 10 : rawSpeedMax <= 120 ? 20 : rawSpeedMax <= 300 ? 50 : 100;
+                speedAxisMax = Math.ceil(rawSpeedMax / speedStep) * speedStep;
+            }
             scales.ySpeed = {
                 type: 'linear', position: 'right', display: true,
                 min: 0,
                 max: speedAxisMax,
-                ticks: { stepSize: speedStep, color: '#34d399', font: { size: 10 }, callback: v => v + '', padding: 0 },
+                ticks: { stepSize: speedStep, color: '#34d399', font: { size: 10 }, callback: v => currentSpeedUnit === 'kn' ? v.toFixed(1) : v + '', padding: 0 },
                 grid: { drawOnChartArea: false },
                 border: { display: false },
                 title: { display: false },
@@ -4122,7 +4133,7 @@
                     yValue: nowSpeedRaw,
                     yScaleID: 'ySpeed',
                     xAdjust: 5,
-                    content: '(' + nowSpeedRaw.toFixed(0) + ')',
+                    content: '(' + (currentSpeedUnit === 'kn' ? nowSpeedRaw.toFixed(1) : nowSpeedRaw.toFixed(0)) + ')',
                     color: '#34d399',
                     font: { size: 8, weight: 'bold' },
                     backgroundColor: 'rgba(17,29,53,0.85)',
@@ -4213,7 +4224,7 @@
                             label: function(c) {
                                 if (c.parsed.y == null) return null;
                                 if (c.dataset.yAxisID === 'yTide') return '  조위  ' + c.parsed.y.toFixed(1) + ' cm';
-                                if (c.dataset.yAxisID === 'ySpeed') return '  유속  ' + c.parsed.y.toFixed(1) + ' cm/s';
+                                if (c.dataset.yAxisID === 'ySpeed') return '  유속  ' + c.parsed.y.toFixed(1) + ' ' + getCurrentSpeedUnitLabel();
                                 return c.dataset.label + ': ' + c.parsed.y;
                             },
                             labelColor: function(c) {
