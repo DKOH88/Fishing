@@ -604,20 +604,11 @@
         }
     }
 
-    // moon/moon 폴더 파일 순서 기반 월령 아이콘 매핑
-    const MOON_PHASE_IMAGE_DAYS = [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 20, 21, 23, 24, 25, 26];
+    // moon 폴더 월령 아이콘 매핑 (0.png~29.png, 음력일-1 인덱스)
     function getMoonPhaseIconSrc(lunarDay) {
         const safeDay = (typeof lunarDay === 'number' && lunarDay >= 1 && lunarDay <= 30) ? lunarDay : 1;
-        let nearestDay = MOON_PHASE_IMAGE_DAYS[0];
-        let minDiff = Math.abs(safeDay - nearestDay);
-        for (const day of MOON_PHASE_IMAGE_DAYS) {
-            const diff = Math.abs(safeDay - day);
-            if (diff < minDiff || (diff === minDiff && day > nearestDay)) {
-                minDiff = diff;
-                nearestDay = day;
-            }
-        }
-        return `moon/moon/moon_${String(nearestDay).padStart(2, '0')}.png`;
+        const idx = safeDay - 1; // 음력 1일=0.png, 15일=14.png, 30일=29.png
+        return `moon/${idx}.png`;
     }
 
     function getMulddae(lunarDay) {
