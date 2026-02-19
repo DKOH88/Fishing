@@ -189,11 +189,16 @@ function buildFishingUpstreamUrl(apiKey, params = {}) {
   return url.toString();
 }
 
-function validateFishingParams(reqDate, gubun, pageNo, numOfRows) {
+function validateFishingParams(reqDate, gubun, pageNo, numOfRows, placeName, include, exclude) {
   if (reqDate && !/^\d{8}$/.test(reqDate)) return 'Invalid reqDate (expected YYYYMMDD)';
   if (!gubun || String(gubun).trim() === '') return 'Invalid gubun (required)';
+  if (String(gubun).length > 20) return 'Invalid gubun (too long)';
   if (pageNo != null && pageNo !== '' && !/^\d+$/.test(String(pageNo))) return 'Invalid pageNo';
   if (numOfRows != null && numOfRows !== '' && !/^\d+$/.test(String(numOfRows))) return 'Invalid numOfRows';
+  if (numOfRows != null && numOfRows !== '' && parseInt(numOfRows, 10) > 100) return 'Invalid numOfRows (max 100)';
+  if (placeName && String(placeName).length > 50) return 'Invalid placeName (too long)';
+  if (include && String(include).length > 100) return 'Invalid include (too long)';
+  if (exclude && String(exclude).length > 100) return 'Invalid exclude (too long)';
   return null;
 }
 
@@ -226,6 +231,13 @@ function validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, max
   for (const [name, val] of [['minX', minX], ['maxX', maxX], ['minY', minY], ['maxY', maxY]]) {
     if (!val || !coordRegex.test(val)) return `Invalid ${name}`;
   }
+  // 한국 해역 범위 제한 (경도 120~135, 위도 30~42)
+  const fMinX = parseFloat(minX), fMaxX = parseFloat(maxX);
+  const fMinY = parseFloat(minY), fMaxY = parseFloat(maxY);
+  if (fMinX < 120 || fMaxX > 135) return 'Invalid X range (expected 120~135)';
+  if (fMinY < 30 || fMaxY > 42) return 'Invalid Y range (expected 30~42)';
+  if (fMinX >= fMaxX || fMinY >= fMaxY) return 'Invalid range (min must be < max)';
+  if ((fMaxX - fMinX) > 10 || (fMaxY - fMinY) > 10) return 'Area too large (max 10 degree span)';
   if (scale != null && scale !== '' && !/^\d+$/.test(String(scale))) return 'Invalid scale';
   return null;
 }
@@ -488,11 +500,24 @@ async function handleVisitorRequest(request, env) {
   const dailyCountKey = `today:${todayStr}`;
   const totalCountKey = 'total';
 
+  // NOTE: KV는 원자적 증가를 지원하지 않아 동시 요청 시 카운트 유실 가능.
+  // 정확한 집계가 필요하면 Durable Objects 또는 D1으로 전환 권장.
   const [existsToday, existsTotal] = await Promise.all([
     KV.get(dailyIpKey),
     KV.get(totalIpKey),
   ]);
 
+  const DAY_TTL = 48 * 60 * 60;
+  const needDailyInc = !existsToday;
+  const needTotalInc = !existsTotal;
+
+  // IP 마킹을 먼저 수행하여 중복 요청 창을 최소화
+  const markPromises = [];
+  if (needDailyInc) markPromises.push(KV.put(dailyIpKey, '1', { expirationTtl: DAY_TTL }));
+  if (needTotalInc) markPromises.push(KV.put(totalIpKey, '1'));
+  if (markPromises.length > 0) await Promise.all(markPromises);
+
+  // 카운트 읽기 → 증가 → 쓰기 (간격 최소화)
   let [dailyCount, totalCount] = await Promise.all([
     KV.get(dailyCountKey),
     KV.get(totalCountKey),
@@ -500,22 +525,14 @@ async function handleVisitorRequest(request, env) {
   dailyCount = parseInt(dailyCount || '0', 10);
   totalCount = parseInt(totalCount || '0', 10);
 
-  const DAY_TTL = 48 * 60 * 60;
-
-  if (!existsToday) {
+  if (needDailyInc) {
     dailyCount += 1;
-    await Promise.all([
-      KV.put(dailyIpKey, '1', { expirationTtl: DAY_TTL }),
-      KV.put(dailyCountKey, String(dailyCount), { expirationTtl: DAY_TTL }),
-    ]);
+    await KV.put(dailyCountKey, String(dailyCount), { expirationTtl: DAY_TTL });
   }
 
-  if (!existsTotal) {
+  if (needTotalInc) {
     totalCount += 1;
-    await Promise.all([
-      KV.put(totalIpKey, '1'),
-      KV.put(totalCountKey, String(totalCount)),
-    ]);
+    await KV.put(totalCountKey, String(totalCount));
   }
 
   return jsonResponse({ today: dailyCount, total: totalCount }, 200, request);
@@ -609,6 +626,60 @@ async function handleLunarRequest(url, env, ctx, request) {
   return response;
 }
 
+// ==================== Rate Limiting (Dual-Window) ====================
+// 10초 마이크로 윈도우 + 60초 분 윈도우로 burst 공격 완화
+// NOTE: KV는 원자적 증가를 지원하지 않아 동시 요청 시 카운트 누락 가능.
+// 10초 버킷으로 blast radius를 최소화한다.
+
+const RATE_LIMIT_MICRO_WINDOW = 10;   // 10초 마이크로 윈도우
+const RATE_LIMIT_MICRO_MAX = 25;      // 10초당 최대 25건
+const RATE_LIMIT_MINUTE_WINDOW = 60;  // 60초 분 윈도우
+const RATE_LIMIT_MINUTE_MAX = 120;    // 분당 최대 120건
+
+async function checkRateLimit(request, env, isVisitor = false) {
+  const KV = env.VISITOR_STORE;
+  if (!KV) return null;
+
+  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const ipHash = await hashIP(ip);
+  const now = Math.floor(Date.now() / 1000);
+
+  // visitor 엔드포인트는 더 엄격한 제한 적용
+  const microMax = isVisitor ? 3 : RATE_LIMIT_MICRO_MAX;
+  const minuteMax = isVisitor ? 10 : RATE_LIMIT_MINUTE_MAX;
+
+  // 고정 버킷 키 (동시 쓰기 충돌 최소화)
+  const microBucket = Math.floor(now / RATE_LIMIT_MICRO_WINDOW);
+  const minuteBucket = Math.floor(now / RATE_LIMIT_MINUTE_WINDOW);
+  const microKey = `rl_m:${ipHash}:${microBucket}`;
+  const minuteKey = `rl_M:${ipHash}:${minuteBucket}`;
+
+  // 두 윈도우 동시 조회
+  const [microStored, minuteStored] = await Promise.all([
+    KV.get(microKey),
+    KV.get(minuteKey),
+  ]);
+
+  const microCount = parseInt(microStored || '0', 10);
+  const minuteCount = parseInt(minuteStored || '0', 10);
+
+  // 제한 초과 확인 (증가 전 비관적 검사)
+  if (microCount >= microMax) {
+    return RATE_LIMIT_MICRO_WINDOW - (now % RATE_LIMIT_MICRO_WINDOW);
+  }
+  if (minuteCount >= minuteMax) {
+    return RATE_LIMIT_MINUTE_WINDOW - (now % RATE_LIMIT_MINUTE_WINDOW);
+  }
+
+  // 두 카운터 동시 증가
+  await Promise.all([
+    KV.put(microKey, String(microCount + 1), { expirationTtl: 60 }),
+    KV.put(minuteKey, String(minuteCount + 1), { expirationTtl: RATE_LIMIT_MINUTE_WINDOW * 2 }),
+  ]);
+
+  return null;
+}
+
 // ==================== Main Handler ====================
 
 export default {
@@ -624,8 +695,24 @@ export default {
       return jsonResponse({ error: 'Method not allowed' }, 405, request);
     }
 
+    // Rate limiting (visitor는 엄격한 제한)
+    const isVisitorEndpoint = url.pathname === '/api/visitor';
+    {
+      const retryAfter = await checkRateLimit(request, env, isVisitorEndpoint);
+      if (retryAfter !== null) {
+        return new Response(JSON.stringify({ error: 'Too many requests' }), {
+          status: 429,
+          headers: {
+            'Content-Type': 'application/json',
+            'Retry-After': String(retryAfter),
+            ...getCorsHeaders(request),
+          },
+        });
+      }
+    }
+
     // 방문자 카운터 API: GET /api/visitor
-    if (url.pathname === '/api/visitor') {
+    if (isVisitorEndpoint) {
       return handleVisitorRequest(request, env);
     }
 
@@ -644,7 +731,7 @@ export default {
       const pageNo = url.searchParams.get('pageNo') || '1';
       const numOfRows = url.searchParams.get('numOfRows') || '20';
 
-      const err = validateFishingParams(reqDate, gubun, pageNo, numOfRows);
+      const err = validateFishingParams(reqDate, gubun, pageNo, numOfRows, placeName, include, exclude);
       if (err) return jsonResponse({ error: err }, 400, request);
 
       const cacheSig = makeParamSignature({ reqDate, gubun, placeName, include, exclude, pageNo, numOfRows });
