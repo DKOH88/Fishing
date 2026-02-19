@@ -29,3 +29,4 @@
 ✅ 4477834 — TideBED numOfRows 1500→300 수정 (API 최댓값 초과로 INVALID_PARAMETER 발생)
 ✅ f73a14d — 편차계산표(deviation) API 제거
 ✅ ae3c4b7 — 어종 판정 비추 메시지 통일: '~, 비추천' 패턴으로 일관성 개선
+✅ de71e0f — 어종 판정 비추 메시지 구분자 통일: 쉼표 → em dash(—)
