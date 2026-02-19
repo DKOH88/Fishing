@@ -20,3 +20,4 @@
 ✅ 7cfef86 — TideBED API 엔드포인트 수정
 ✅ d320d33 — 장단기조석관측 API 엔드포인트 수정
 ✅ 9d0ef6a — 바다낚시지수 표기 형식 변경: 등급 앞에 ㅡ 구분자 추가
+✅ 1a67bf3 — tidebed, ls-term-tide-obs 엔드포인트를 원래 오퍼레이션명으로 복원
