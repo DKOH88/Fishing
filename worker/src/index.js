@@ -13,7 +13,6 @@ const ENDPOINT_MAP = {
   'current':    'crntFcstTime/GetCrntFcstTimeApiService',
   'tide-time':  'tideFcstTime/GetTideFcstTimeApiService',
   'deviation':  'deviationCal/GetDeviationCalApiService',
-  'ls-term-tide-obs': 'lsTermTideObs/GetLSTermTideObsApiService',
   'tidebed':    'tidebed/GetTidebedApiService',
   'current-fld-ebb': 'crntFcstFldEbb/GetCrntFcstFldEbbApiService',
 };
@@ -24,7 +23,6 @@ const DEFAULT_PARAMS = {
   'current':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'tide-time':  { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
   'deviation':  { numOfRows: '50', pageNo: '1', type: 'json' },
-  'ls-term-tide-obs': { numOfRows: '24', pageNo: '1', type: 'json' },
   'tidebed':    { numOfRows: '1500', pageNo: '1', type: 'json' },
   'current-fld-ebb': { numOfRows: '20', pageNo: '1', type: 'json' },
 };
@@ -796,13 +794,13 @@ export default {
     }
 
     // 기존 공공데이터포털 API 라우팅: GET /api/{endpoint}
-    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|deviation|ls-term-tide-obs|tidebed|current-fld-ebb)$/);
+    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|deviation|tidebed|current-fld-ebb)$/);
     if (!match) {
       return jsonResponse({
         error: 'Not Found',
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
-          '/api/tide-time', '/api/deviation', '/api/ls-term-tide-obs', '/api/tidebed', '/api/current-fld-ebb',
+          '/api/tide-time', '/api/deviation', '/api/tidebed', '/api/current-fld-ebb',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area', '/api/khoa/tide-harmonics',
           '/api/lunar',

@@ -1570,7 +1570,6 @@
         'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
         'tideFcstTime/GetTideFcstTimeApiService': '/api/tide-time',
         'deviationCal/GetDeviationCalApiService': '/api/deviation',
-        'lsTermTideObs/GetLSTermTideObsApiService': '/api/ls-term-tide-obs',
         'tidebed/GetTidebedApiService': '/api/tidebed',
         'crntFcstFldEbb/GetCrntFcstFldEbbApiService': '/api/current-fld-ebb',
         'fcstFishingv2/GetFcstFishingApiServicev2': '/api/fishing-index',
@@ -1691,12 +1690,6 @@
                 numOfRows: '50',
                 pageNo: '1'
             }).then(parseDeviationText).catch(() => '');
-            const lsTermObsItemsPromise = apiCall('lsTermTideObs/GetLSTermTideObsApiService', {
-                obsCode: stationCode,
-                reqDate: dateStr,
-                numOfRows: '24',
-                pageNo: '1'
-            }).catch(() => []);
             const harmonicsPromise = apiCallRaw('/api/khoa/tide-harmonics', {
                 obsCode: stationCode
             }).then(parseTideHarmonicsText).catch(() => '');
@@ -1737,14 +1730,12 @@
                 rangePct
             };
             renderMulddaeCardFromState();
-            const [deviationText, lsTermObsItems, harmonicsText, fishingInfo] = await Promise.all([
+            const [deviationText, harmonicsText, fishingInfo] = await Promise.all([
                 deviationPromise,
-                lsTermObsItemsPromise,
                 harmonicsPromise,
                 fishingPromise
             ]);
-            const lsTermObsText = parseLsTermObsText(lsTermObsItems);
-            setTideDataStamp(buildTideDataStampText(items, lsTermObsItems, dateStr));
+            setTideDataStamp(buildTideDataStampText(items, dateStr));
             window._fishingIndexInfo = fishingInfo;
             renderMulddaeCardFromState();
             // 일출/일몰 계산
@@ -1765,7 +1756,7 @@
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
                         <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
-                        <div class="time">${[deviationText, lsTermObsText, harmonicsText].filter(Boolean).join(' · ')}</div>
+                        <div class="time">${[deviationText, harmonicsText].filter(Boolean).join(' · ')}</div>
                     </div>
                 </div>`;
 
@@ -1961,25 +1952,14 @@
         return best;
     }
 
-    function buildTideDataStampText(hlItems, lsTermItems, dateStr) {
+    function buildTideDataStampText(hlItems, dateStr) {
         const forecastRef = pickLatestDateTimeFromItems(
-            lsTermItems,
-            ['predcDt', 'predcTm', 'predcTime', 'baseTime', 'tm'],
-            dateStr
-        ) || pickLatestDateTimeFromItems(
             hlItems,
             ['predcDt', 'predcTm', 'predcTime', 'tm'],
             dateStr
         );
 
-        const observedRef = pickLatestDateTimeFromItems(
-            lsTermItems,
-            ['obsrvnDt', 'obsrvnTm', 'obsrvnTime', 'tm'],
-            dateStr
-        );
-
         const forecastText = forecastRef ? forecastRef.timeLabel : '-';
-        const observedText = observedRef ? observedRef.timeLabel : '-';
         return `예보 생성시각 ${forecastText}`;
     }
 
@@ -2130,31 +2110,6 @@
         const rounded = Math.round(v);
         const sign = rounded > 0 ? '+' : '';
         return `편차 ${sign}${rounded}cm`;
-    }
-
-    function parseLsTermObsText(items) {
-        if (!items || items.length === 0) return '';
-        const rec = items[0] || {};
-
-        const obs = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'obsrvnTdlvVl', 'obsrvnVal', 'obsVal', 'obsrvnHgt', 'tdlvHgt'
-        ]));
-        const pred = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'predcTdlvVl', 'predcVal', 'predVal', 'bscTdlvHgt'
-        ]));
-        const dt = extractByKeysCaseInsensitive(rec, [
-            'obsrvnDt', 'predcDt', 'baseTime', 'tm'
-        ]);
-        const tm = normalizeClockTime(dt);
-
-        if (obs != null && pred != null) {
-            const delta = Math.round((obs - pred) * 10) / 10;
-            const sign = delta > 0 ? '+' : '';
-            return `장단기관측 ${tm ? tm + ' ' : ''}${sign}${delta}cm`;
-        }
-        if (obs != null) return `장단기관측 ${tm ? tm + ' ' : ''}${Math.round(obs)}cm`;
-        if (pred != null) return `장단기관측예측 ${tm ? tm + ' ' : ''}${Math.round(pred)}cm`;
-        return '';
     }
 
     function parseTideHarmonicsText(raw) {
