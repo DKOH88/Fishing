@@ -31,7 +31,7 @@ const PRECACHE_PORTS = [
   { name: '오천항',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.38', lon: '126.47' },
   { name: '안흥항',   obsCode: 'DT_0067', currentCode: '07TA05',  lat: '36.67', lon: '126.13' },
   { name: '영흥도',   obsCode: 'DT_0043', currentCode: '20LTC04', lat: '37.25', lon: '126.47' },
-  { name: '삼길포항', obsCode: 'DT_0017', currentCode: '17LTC06', lat: '36.78', lon: '126.43' },
+  { name: '삼길포항', obsCode: 'DT_0017', currentCode: '17LTC06', lat: '37.00', lon: '126.45' },
   { name: '대천항',   obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.32', lon: '126.51' },
   { name: '마검포항', obsCode: 'DT_0067', currentCode: '23GA01',  lat: '36.41', lon: '126.33' },
   { name: '무창포항', obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.27', lon: '126.54' },

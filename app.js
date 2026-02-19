@@ -149,7 +149,7 @@
     // ==================== 낚시 포인트 프리셋 (가장 가까운 관측소/조류예보점 매핑) ====================
     const FISHING_PORTS = [
         { name: '오천항', lat: 36.38, lon: 126.47, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
-        { name: '삼길포항', lat: 36.78, lon: 126.43, region: '충남', station: 'DT_0017', stationName: '대산', current: '17LTC06', currentName: '가로림만입구' },
+        { name: '삼길포항', lat: 37.00, lon: 126.45, region: '충남', station: 'DT_0017', stationName: '대산', current: '17LTC06', currentName: '가로림만입구' },
         { name: '대천항', lat: 36.32, lon: 126.51, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '무창포', lat: 36.27, lon: 126.54, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
