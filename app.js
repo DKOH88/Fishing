@@ -483,6 +483,7 @@
             if (e.key === 'Escape') searchResults.classList.remove('show');
             if (e.key === 'Enter') {
                 e.preventDefault();
+                clearTimeout(debounceTimer);
                 const q = searchInput.value.trim();
                 if (q.length === 0) return;
                 const results = doSearch(q);
@@ -490,6 +491,7 @@
                     selectSearchResult(results[0]);
                     searchInput.blur();
                 }
+                searchResults.classList.remove('show');
             }
         });
 
@@ -1413,9 +1415,9 @@
                         html += `<div style="display:flex;flex-direction:column;">
                         <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${mergedBg};border:1px solid ${mergedBorder};border-radius:6px;font-size:0.78em;flex-wrap:wrap;">
                             <span>🐙</span>
-                            <span style="color:var(--text);font-weight:600;">쭈꾸미</span><span style="color:${jj.color};font-weight:700;">${jj.grade}</span>
+                            <span style="color:var(--text);font-weight:600;">쭈꾸미</span>
                             <span style="color:var(--muted);margin:0 2px;">·</span>
-                            <span style="color:var(--text);font-weight:600;">문어</span><span style="color:${mn.color};font-weight:700;">${mn.grade}</span>
+                            <span style="color:var(--text);font-weight:600;">문어</span>
                         </div>`;
                         html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${jj.color};font-weight:600;">${jj.grade}</span> <span>${jj.desc}</span></div>`;
                         if (jj.diffInfo) html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
@@ -1428,7 +1430,6 @@
                         <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${go.color}15;border:1px solid ${go.color}33;border-radius:6px;font-size:0.78em;">
                             <span>${go.emoji}</span>
                             <span style="color:var(--text);font-weight:600;">${go.name}</span>
-                            <span style="color:${go.color};font-weight:700;">${go.grade}</span>
                         </div>
                         <div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${go.color};font-weight:600;">${go.grade}</span> <span>${go.desc}</span></div>${diffLine}</div>`;
                     }
@@ -2000,6 +2001,13 @@
             const isLoading = state === 'loading';
             btn.disabled = isLoading;
             btn.classList.toggle('is-spinning', isLoading);
+        }
+        // 물때 새로고침 버튼도 연동
+        const mulddaeBtn = document.getElementById('mulddaeReloadBtn');
+        if (mulddaeBtn) {
+            const isLoading = state === 'loading';
+            mulddaeBtn.disabled = isLoading;
+            mulddaeBtn.classList.toggle('is-spinning', isLoading);
         }
     }
 
@@ -2652,12 +2660,11 @@
             // 고저차: 300~400cm 최상, 200~300/400~600 보통, 그 외 낮음
             useDiff: true,
             rules: [
-                { cond: (p, n) => n === '조금' || n === '무시', grade: '비추', desc: '조류 부족, 활성 낮음', mulddaeDesc: '조류 부족한 날 — 활성 낮음, 출조 비추천' },
-                { cond: (p, n) => p >= 55 && p <= 80,           grade: '최상', desc: '3~6물 적정 조류, 최적', mulddaeDesc: (n) => `${n} — 3~6물 적정 조류, 갑오징어 최적!` },
-                { cond: (p, n) => p > 80 && p <= 95,            grade: '보통', desc: '7~9물 조류 강함, 할 만함', mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
-                { cond: (p, n) => p > 95,                       grade: '비추', desc: '사리 전후, 조류 너무 강함', mulddaeDesc: (n) => `${n} — 조류 과다, 갑오징어 출조 비추천` },
-                { cond: (p, n) => p >= 35,                      grade: '보통', desc: '약한 조류, 정조 시간 주의', mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
-                { cond: () => true,                             grade: '비추', desc: '조류 부족', mulddaeDesc: '조류 부족' }
+                { cond: (p, n) => p >= 40 && p <= 60,           grade: '최상', desc: '적정 조류, 최적', mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
+                { cond: (p, n) => p >= 30 && p < 40,            grade: '보통', desc: '약한 조류, 할 만함', mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
+                { cond: (p, n) => p > 60 && p < 70,             grade: '보통', desc: '조류 강한 편, 할 만함', mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
+                { cond: (p, n) => p < 30,                       grade: '비추', desc: '조류 부족', mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
+                { cond: () => true,                             grade: '비추', desc: '조류 과다', mulddaeDesc: (n) => `${n} — 조류 과다, 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
