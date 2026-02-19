@@ -149,14 +149,14 @@
     // ==================== 낚시 포인트 프리셋 (가장 가까운 관측소/조류예보점 매핑) ====================
     const FISHING_PORTS = [
         { name: '오천항', lat: 36.38, lon: 126.47, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
-        { name: '삼길포항', lat: 37.00, lon: 126.45, region: '충남', station: 'DT_0017', stationName: '대산', current: '17LTC06', currentName: '가로림만입구' },
+        { name: '삼길포항', lat: 37.00, lon: 126.45, region: '충남', station: 'DT_0017', stationName: '대산', current: '07DS02', currentName: '대산항' },
         { name: '대천항', lat: 36.32, lon: 126.51, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
-        { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
+        { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0051', stationName: '서천마량', current: '12JB11', currentName: '비인만' },
         { name: '무창포', lat: 36.27, lon: 126.54, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '신진도항', lat: 36.50, lon: 126.30, region: '충남', station: 'DT_0067', stationName: '안흥', current: '07TA05', currentName: '안흥' },
         { name: '마검포항', lat: 36.41, lon: 126.33, region: '충남', station: 'DT_0025', stationName: '보령', current: '23GA01', currentName: '안면도서측' },
         { name: '영목항', lat: 36.38, lon: 126.32, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
-        { name: '구매항', lat: 36.50, lon: 126.27, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
+        { name: '구매항', lat: 36.50, lon: 126.27, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
         { name: '안흥외항', lat: 36.67, lon: 126.13, region: '충남', station: 'DT_0067', stationName: '안흥', current: '07TA05', currentName: '안흥' },
         { name: '남당항', lat: 36.53, lon: 126.44, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
         { name: '대야도', lat: 36.38, lon: 126.50, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
@@ -176,7 +176,7 @@
         { name: '축산항', lat: 36.43, lon: 129.45, region: '경북', station: 'DT_0011', stationName: '후포', current: '17LTC07', currentName: '울도남측' },
         { name: '장호항', lat: 37.28, lon: 129.33, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
         { name: '임원항', lat: 37.25, lon: 129.35, region: '강원', station: 'DT_0057', stationName: '동해항', current: null, currentName: null },
-        { name: '백사장항', lat: 37.24, lon: 126.58, region: '경기', station: 'DT_0008', stationName: '안산', current: '16DJ04', currentName: '시화방조제' },
+        { name: '백사장항', lat: 36.59, lon: 126.31, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
         { name: '전곡항', lat: 37.15, lon: 126.66, region: '경기', station: 'DT_0008', stationName: '안산', current: '19LTC01', currentName: '화성방조제' },
     ];
     window._selectedPort = null;
@@ -413,13 +413,21 @@
             // 관측소→조류예보점 기본 매핑 (가장 가까운 예보점 수동 지정)
             const OBS_TO_CURRENT = {
                 'DT_0001': '17LTC01',  // 인천 → 인천신항입구
-                'DT_0002': '19LTC01',  // 평택 → 화성방조제
+                'DT_0002': '13PT01',   // 평택 → 평택항
                 'DT_0016': '18LTC06',  // 여수 → 여수해협
                 'DT_0043': '20LTC04',  // 영흥도 → 영흥도서측
                 'DT_0052': '17LTC01',  // 인천송도 → 인천신항입구
             };
             const mapped = OBS_TO_CURRENT[item.code];
-            if (mapped && region.currents.some(c => c[0] === mapped)) {
+            if (mapped) {
+                // 매핑된 예보점이 현재 지역에 없으면 해당 지역으로 전환
+                if (!region.currents.some(c => c[0] === mapped)) {
+                    const targetRegion = getRegionByCurrentCode(mapped);
+                    if (targetRegion) {
+                        buildCurrentSelect(targetRegion);
+                        updateRegionBadges(targetRegion);
+                    }
+                }
                 currentSel.value = mapped;
             } else {
                 // 폴백: 같은 이름의 조류 예보점 자동 매칭 (정확→접두사 순)
