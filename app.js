@@ -1370,19 +1370,16 @@
         let fishingText = '';
 
         if (fishingInfo) {
-            const scoreText = Number.isFinite(fishingInfo.totalScore)
-                ? `${Math.round(fishingInfo.totalScore)}점`
-                : (Number.isFinite(fishingInfo.fishingScore) ? `${Math.round(fishingInfo.fishingScore)}점` : '-');
-            const gradeText = fishingInfo.grade ? ` ${escapeHTML(fishingInfo.grade)}` : '';
+            const gradeText = fishingInfo.grade ? `${escapeHTML(fishingInfo.grade)}` : '';
             const placeText = fishingInfo.placeName ? ` ${escapeHTML(fishingInfo.placeName)}` : '';
-            const timeText = fishingInfo.baseTime ? ` ${escapeHTML(fishingInfo.baseTime)}` : '';
             const detailParts = [];
-            if (Number.isFinite(fishingInfo.fishingScore)) detailParts.push(`낚시 ${Math.round(fishingInfo.fishingScore)}`);
-            if (Number.isFinite(fishingInfo.tideScore)) detailParts.push(`조석 ${Math.round(fishingInfo.tideScore)}`);
-            if (Number.isFinite(fishingInfo.weatherScore)) detailParts.push(`기상 ${Math.round(fishingInfo.weatherScore)}`);
-            if (Number.isFinite(fishingInfo.waterScore)) detailParts.push(`수온 ${Math.round(fishingInfo.waterScore)}`);
+            if (fishingInfo.weather) detailParts.push(`${escapeHTML(fishingInfo.weather)}`);
+            if (fishingInfo.airTemp) detailParts.push(`기온 ${escapeHTML(fishingInfo.airTemp)}℃`);
+            if (fishingInfo.waterTemp) detailParts.push(`수온 ${escapeHTML(fishingInfo.waterTemp)}℃`);
+            if (fishingInfo.waveHeight) detailParts.push(`파고 ${escapeHTML(fishingInfo.waveHeight)}m`);
+            if (fishingInfo.windSpeed) detailParts.push(`풍속 ${escapeHTML(fishingInfo.windSpeed)}m/s`);
             const detailText = detailParts.length > 0 ? ` · ${detailParts.join(' / ')}` : '';
-            fishingText = `🎣 바다낚시지수(${escapeHTML(fishingInfo.gubun || '선상')}) ${scoreText}${gradeText}${placeText}${timeText}${detailText}`;
+            fishingText = `🎣 바다낚시지수(선상) ${gradeText}${placeText}${detailText}`;
         }
 
         mulddaeEl.innerHTML = `
@@ -2195,68 +2192,74 @@
         return stationName || '';
     }
 
-    function parseFishingIndexInfo(items, gubun, placeName, reqDate) {
+    function parseFishingIndexData(items, placeName, stationCode) {
         if (!items || items.length === 0) return null;
-        const rec = items[0] || {};
 
-        const totalScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'total_score', 'totalScore', 'score', 'fishScore', 'fishingScore', 'fshnIdx'
-        ]));
-        const fishingScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'fishing_score', 'fishingScore', 'fish_score', 'fishScore'
-        ]));
-        const tideScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'tide_score', 'tideScore'
-        ]));
-        const weatherScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'weather_score', 'weatherScore'
-        ]));
-        const waterScore = toFiniteNumber(extractByKeysCaseInsensitive(rec, [
-            'water_score', 'waterScore'
-        ]));
+        // 오래된 데이터 무시 (7일 이상)
+        const now = new Date();
+        const validItems = items.filter(it => {
+            if (!it.date) return false;
+            const d = new Date(it.date);
+            return !isNaN(d.getTime()) && (now - d) < 7 * 24 * 60 * 60 * 1000;
+        });
+        if (validItems.length === 0) return null;
 
-        let grade = extractByKeysCaseInsensitive(rec, [
-            'idxGrade', 'grade', 'step', 'fishingGrade', 'fshnStep', 'fishingIndex'
-        ]);
-        if (!grade && Number.isFinite(totalScore)) {
-            if (totalScore >= 80) grade = '매우좋음';
-            else if (totalScore >= 65) grade = '좋음';
-            else if (totalScore >= 50) grade = '보통';
-            else grade = '주의';
+        // 사용자 포인트 이름과 가장 유사한 지역 찾기
+        let rec = null;
+        if (placeName) {
+            const normPlace = placeName.replace(/\s/g, '');
+            rec = validItems.find(it => it.name && it.name.replace(/\s/g, '') === normPlace);
+            if (!rec) rec = validItems.find(it => it.name && it.name.includes(placeName));
+            if (!rec) rec = validItems.find(it => it.name && placeName.includes(it.name));
         }
+        // 매칭 실패 시 위치 기반 가장 가까운 항목 또는 첫 번째 항목
+        if (!rec) {
+            const geo = getActiveGeoPoint(stationCode);
+            if (geo && Number.isFinite(geo.lat) && Number.isFinite(geo.lon)) {
+                let minDist = Infinity;
+                for (const it of validItems) {
+                    const lat = parseFloat(it.lat);
+                    const lon = parseFloat(it.lon);
+                    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+                    const dist = Math.sqrt((lat - geo.lat) ** 2 + (lon - geo.lon) ** 2);
+                    if (dist < minDist) { minDist = dist; rec = it; }
+                }
+            }
+        }
+        if (!rec) rec = validItems[0];
 
-        const place = extractByKeysCaseInsensitive(rec, ['placeName', 'placeNm', 'spotName', 'spotNm']) || placeName;
-        const baseTimeRaw = extractByKeysCaseInsensitive(rec, ['baseTime', 'time', 'predcTime', 'tm']);
-        const baseTime = normalizeClockTime(baseTimeRaw);
+        const grade = rec.total_score ? String(rec.total_score) : '';
+        const tideTimeScore = rec.tide_time_score || '';
+        const name = rec.name || '';
+        const date = rec.date || '';
+        const time = rec.time || '';
+        const airTemp = rec.air_temp || '';
+        const weather = rec.weather || '';
+        const waveHeight = rec.wave_height || '';
+        const waterTemp = rec.water_temp || '';
+        const windSpeed = rec.wind_speed || '';
 
-        if (!Number.isFinite(totalScore) && !Number.isFinite(fishingScore) && !grade) return null;
+        if (!grade) return null;
 
         return {
-            reqDate,
-            gubun,
-            placeName: place || placeName || '',
-            grade: grade ? String(grade) : '',
-            totalScore,
-            fishingScore,
-            tideScore,
-            weatherScore,
-            waterScore,
-            baseTime: baseTime || '',
+            reqDate: date.replace(/-/g, ''),
+            gubun: '선상',
+            placeName: name,
+            grade,
+            tideTimeScore,
+            airTemp,
+            weather,
+            waveHeight,
+            waterTemp,
+            windSpeed,
+            baseTime: time,
         };
     }
 
     async function fetchFishingIndexInfo(stationCode, dateStr) {
-        const gubun = '선상';
         const placeName = getActiveFishingPlaceName(stationCode);
-        const items = await apiCall('fcstFishingv2/GetFcstFishingApiServicev2', {
-            reqDate: dateStr,
-            gubun,
-            placeName,
-            include: 'total_score,fishing_score,tide_score,weather_score,water_score',
-            numOfRows: '20',
-            pageNo: '1'
-        });
-        return parseFishingIndexInfo(items, gubun, placeName, dateStr);
+        const items = await apiCall('fcstFishingv2/GetFcstFishingApiServicev2', {});
+        return parseFishingIndexData(items, placeName, stationCode);
     }
 
     function pad2(n) {

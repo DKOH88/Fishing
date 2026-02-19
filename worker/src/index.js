@@ -29,7 +29,6 @@ const DEFAULT_PARAMS = {
   'current-fld-ebb': { numOfRows: '20', pageNo: '1', type: 'json' },
 };
 
-const FISHING_ENDPOINT_PATH = 'fcstFishingv2/GetFcstFishingApiServicev2';
 
 const ALLOWED_ORIGINS = new Set([
   'https://fishing-tide.pages.dev',
@@ -178,28 +177,8 @@ function extractApiLevelResultMsg(data) {
   return data?.header?.resultMsg || data?.response?.header?.resultMsg || null;
 }
 
-function buildFishingUpstreamUrl(apiKey, params = {}) {
-  const url = new URL(`${UPSTREAM_BASE}/${FISHING_ENDPOINT_PATH}`);
-  url.searchParams.set('serviceKey', apiKey);
-  url.searchParams.set('type', 'json');
-  Object.entries(params).forEach(([k, v]) => {
-    if (v == null || v === '') return;
-    url.searchParams.set(k, String(v));
-  });
-  return url.toString();
-}
-
-function validateFishingParams(reqDate, gubun, pageNo, numOfRows, placeName, include, exclude) {
-  if (reqDate && !/^\d{8}$/.test(reqDate)) return 'Invalid reqDate (expected YYYYMMDD)';
-  if (!gubun || String(gubun).trim() === '') return 'Invalid gubun (required)';
-  if (String(gubun).length > 20) return 'Invalid gubun (too long)';
-  if (pageNo != null && pageNo !== '' && !/^\d+$/.test(String(pageNo))) return 'Invalid pageNo';
-  if (numOfRows != null && numOfRows !== '' && !/^\d+$/.test(String(numOfRows))) return 'Invalid numOfRows';
-  if (numOfRows != null && numOfRows !== '' && parseInt(numOfRows, 10) > 100) return 'Invalid numOfRows (max 100)';
-  if (placeName && String(placeName).length > 50) return 'Invalid placeName (too long)';
-  if (include && String(include).length > 100) return 'Invalid include (too long)';
-  if (exclude && String(exclude).length > 100) return 'Invalid exclude (too long)';
-  return null;
+function buildFishingIndexUrl(khoaKey, type = 'BF') {
+  return `${KHOA_BASE}/fcIndexOfType/search.do?ServiceKey=${encodeURIComponent(khoaKey)}&Type=${encodeURIComponent(type)}&ResultType=json`;
 }
 
 // ==================== KHOA Helpers ====================
@@ -721,21 +700,16 @@ export default {
       return handleLunarRequest(url, env, ctx, request);
     }
 
-    // 바다낚시지수 API: GET /api/fishing-index?reqDate=YYYYMMDD&gubun=선상&placeName=오천
+    // 바다낚시지수 API (KHOA 선상낚시): GET /api/fishing-index
     if (url.pathname === '/api/fishing-index') {
-      const reqDate = url.searchParams.get('reqDate') || getTodayStr();
-      const gubun = url.searchParams.get('gubun') || '선상';
-      const placeName = url.searchParams.get('placeName') || '';
-      const include = url.searchParams.get('include') || '';
-      const exclude = url.searchParams.get('exclude') || '';
-      const pageNo = url.searchParams.get('pageNo') || '1';
-      const numOfRows = url.searchParams.get('numOfRows') || '20';
+      const khoaKey = env.KHOA_SERVICE_KEY;
+      if (!khoaKey) {
+        return jsonResponse({ error: 'Server configuration error: KHOA API key not set' }, 500, request);
+      }
 
-      const err = validateFishingParams(reqDate, gubun, pageNo, numOfRows, placeName, include, exclude);
-      if (err) return jsonResponse({ error: err }, 400, request);
-
-      const cacheSig = makeParamSignature({ reqDate, gubun, placeName, include, exclude, pageNo, numOfRows });
-      const cacheKey = new Request(`https://tide-cache.internal/fishing-index/${cacheSig}`);
+      const VALID_FISHING_TYPES = new Set(['BF', 'SF', 'BE', 'SD', 'SK', 'SS', 'TL', 'SR', 'ST']);
+      const fishingType = VALID_FISHING_TYPES.has(url.searchParams.get('type')) ? url.searchParams.get('type') : 'BF';
+      const cacheKey = buildKhoaCacheKey('fishing-index', `${fishingType}_${getTodayStr()}`);
       const cache = caches.default;
       const cached = await cache.match(cacheKey);
       if (cached) {
@@ -744,42 +718,33 @@ export default {
         return resp;
       }
 
-      const apiKey = env.FISHING_API_KEY || env.DATA_GO_KR_API_KEY;
-      if (!apiKey) {
-        return jsonResponse({ error: 'Server configuration error: FISHING_API_KEY not set' }, 500, request);
-      }
-
-      const upstreamUrl = buildFishingUpstreamUrl(apiKey, {
-        reqDate, gubun, placeName, include, exclude, pageNo, numOfRows
-      });
-
+      const upstreamUrl = buildFishingIndexUrl(khoaKey, fishingType);
       let upstreamResp;
       try {
-        upstreamResp = await fetch(upstreamUrl);
+        upstreamResp = await fetch(upstreamUrl, {
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideProxy/1.0)' }
+        });
       } catch (e) {
-        return jsonResponse({ error: 'Fishing API fetch failed', detail: e.message }, 502, request);
+        return jsonResponse({ error: 'KHOA fishing index fetch failed', detail: e.message }, 502, request);
       }
 
       if (!upstreamResp.ok) {
-        return jsonResponse({ error: `Fishing API returned HTTP ${upstreamResp.status}` }, 502, request);
+        return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
       }
 
       let data;
       try {
         data = await upstreamResp.json();
       } catch (e) {
-        return jsonResponse({ error: 'Failed to parse fishing API response' }, 502, request);
+        return jsonResponse({ error: 'Failed to parse KHOA fishing index response' }, 502, request);
       }
 
-      const resultCode = extractApiLevelResultCode(data);
-      if (resultCode && resultCode !== '00') {
-        return jsonResponse({
-          error: extractApiLevelResultMsg(data) || 'Fishing API error',
-          raw: data
-        }, 400, request);
+      if (!data.result || !data.result.data) {
+        return jsonResponse({ error: 'KHOA fishing index returned no data', raw: data }, 400, request);
       }
 
-      const ttl = computeCacheTTL('fishing-index', reqDate);
+      // 3시간 캐싱 (예보 데이터, 하루 몇 번 갱신)
+      const ttl = 3 * 60 * 60;
       const response = new Response(JSON.stringify(data), {
         status: 200,
         headers: {
