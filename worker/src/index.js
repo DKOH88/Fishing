@@ -13,7 +13,7 @@ const ENDPOINT_MAP = {
   'current':    'crntFcstTime/GetCrntFcstTimeApiService',
   'tide-time':  'tideFcstTime/GetTideFcstTimeApiService',
   'deviation':  'deviationCal/GetDeviationCalApiService',
-  'ls-term-tide-obs': 'lsTermTideObs/GetLsTermTideObsApiService',
+  'ls-term-tide-obs': 'lsTermTideObs/GetLSTermTideObsApiService',
   'tidebed':    'tidebed/GetTidebedApiService',
   'current-fld-ebb': 'crntFcstFldEbb/GetCrntFcstFldEbbApiService',
 };
