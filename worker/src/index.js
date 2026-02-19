@@ -36,7 +36,7 @@ const PRECACHE_PORTS = [
   { name: '마검포항', obsCode: 'DT_0025', currentCode: '23GA01',  lat: '36.41', lon: '126.33' },
   { name: '무창포항', obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.27', lon: '126.54' },
   { name: '영목항',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.38', lon: '126.32' },
-  { name: '인천',     obsCode: 'DT_0001', currentCode: '07GG06',  lat: '37.45', lon: '126.59' },
+  { name: '인천',     obsCode: 'DT_0001', currentCode: '17LTC01', lat: '37.45', lon: '126.59' },
   { name: '평택',     obsCode: 'DT_0002', currentCode: '19LTC01', lat: '36.97', lon: '126.82' },
   { name: '구매항',   obsCode: 'DT_0067', currentCode: '23GA01',  lat: '36.50', lon: '126.27' },
   { name: '남당항',   obsCode: 'DT_0025', currentCode: '16LTC03', lat: '36.53', lon: '126.44' },
@@ -46,6 +46,7 @@ const PRECACHE_PORTS = [
   { name: '녹동항',   obsCode: 'DT_0026', currentCode: '06YS09',  lat: '34.48', lon: '127.08' },
   { name: '전곡항',   obsCode: 'DT_0008', currentCode: '19LTC01', lat: '37.15', lon: '126.66' },
   { name: '홍원항',   obsCode: 'DT_0025', currentCode: '07KS01',  lat: '36.30', lon: '126.48' },
+  { name: '군산',     obsCode: 'DT_0018', currentCode: '12JB14',  lat: '35.97', lon: '126.62' },
 ];
 
 const ALLOWED_ORIGINS = new Set([
