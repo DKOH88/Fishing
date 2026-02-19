@@ -477,6 +477,20 @@
             if (!e.target.closest('.search-bar')) {
                 searchResults.classList.remove('show');
             }
+            // 바다낚시지수 팝업
+            const fishBtn = e.target.closest('.fishing-index-btn');
+            if (fishBtn) {
+                e.stopPropagation();
+                const existing = document.querySelector('.fishing-popup');
+                if (existing) { existing.remove(); return; }
+                const popup = document.createElement('div');
+                popup.className = 'fishing-popup';
+                popup.innerHTML = fishBtn.dataset.popup.replace(/\n/g, '<br>');
+                fishBtn.parentElement.appendChild(popup);
+                return;
+            }
+            const existingPopup = document.querySelector('.fishing-popup');
+            if (existingPopup && !e.target.closest('.fishing-popup')) existingPopup.remove();
         });
 
         searchInput.addEventListener('keydown', (e) => {
@@ -1371,15 +1385,16 @@
 
         if (fishingInfo) {
             const gradeText = fishingInfo.grade ? `${escapeHTML(fishingInfo.grade)}` : '';
-            const placeText = fishingInfo.placeName ? ` ${escapeHTML(fishingInfo.placeName)}` : '';
-            const detailParts = [];
-            if (fishingInfo.airTemp) detailParts.push(`기온 ${escapeHTML(fishingInfo.airTemp)}℃`);
-            if (fishingInfo.waterTemp) detailParts.push(`수온 ${escapeHTML(fishingInfo.waterTemp)}℃`);
-            if (fishingInfo.waveHeight) detailParts.push(`파고 ${escapeHTML(fishingInfo.waveHeight)}m`);
-            if (fishingInfo.windSpeed) detailParts.push(`풍속 ${escapeHTML(fishingInfo.windSpeed)}m/s`);
-            const detailText = detailParts.length > 0 ? detailParts.join(' / ') : '';
-            fishingText = `<div class="fishing-index-btn" onclick="this.classList.toggle('open')">🎣 바다낚시지수(선상) ${gradeText}${placeText} <span class="fishing-arrow">▶</span></div>`
-                + (detailText ? `<div class="fishing-index-detail">${detailText}</div>` : '');
+            const detailLines = [];
+            if (fishingInfo.placeName) detailLines.push(`📍 ${escapeHTML(fishingInfo.placeName)}`);
+            if (fishingInfo.baseTime) detailLines.push(`🕐 ${escapeHTML(fishingInfo.baseTime)}`);
+            if (fishingInfo.airTemp) detailLines.push(`🌡 기온 ${escapeHTML(fishingInfo.airTemp)}℃`);
+            if (fishingInfo.waterTemp) detailLines.push(`🌊 수온 ${escapeHTML(fishingInfo.waterTemp)}℃`);
+            if (fishingInfo.waveHeight) detailLines.push(`〰 파고 ${escapeHTML(fishingInfo.waveHeight)}m`);
+            if (fishingInfo.windSpeed) detailLines.push(`💨 풍속 ${escapeHTML(fishingInfo.windSpeed)}m/s`);
+            if (fishingInfo.tideTimeScore) detailLines.push(`🌙 물때점수 ${escapeHTML(fishingInfo.tideTimeScore)}`);
+            const popupData = detailLines.join('\n');
+            fishingText = `<span class="fishing-index-btn" data-popup="${escapeHTML(popupData)}">🎣 바다낚시지수(선상) ${gradeText}</span>`;
         }
 
         mulddaeEl.innerHTML = `
