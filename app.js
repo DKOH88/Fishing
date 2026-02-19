@@ -530,6 +530,21 @@
         // 조위 그래프 새로고침
         document.getElementById('tideChartReloadBtn').addEventListener('click', refreshTideChart);
 
+        // 물때 새로고침
+        document.getElementById('mulddaeReloadBtn').addEventListener('click', async () => {
+            const btn = document.getElementById('mulddaeReloadBtn');
+            if (btn.disabled) return;
+            btn.disabled = true;
+            btn.classList.add('is-spinning');
+            try {
+                await Promise.all([fetchTideHighLow(), fetchCurrentData()]);
+                await fetchTidePrediction();
+                renderCombinedChart();
+            } catch(e) { console.error('물때 새로고침 오류:', e); }
+            btn.classList.remove('is-spinning');
+            btn.disabled = false;
+        });
+
         // 어종 버튼
         document.querySelectorAll('.species-btn').forEach(btn => {
             btn.addEventListener('click', () => toggleSpecies(btn.dataset.species));
@@ -648,6 +663,13 @@
         };
         const safeDay = (lunarDay >= 1 && lunarDay <= 30) ? lunarDay : 1;
         return mulddaeMap[safeDay] || mulddaeMap[1];
+    }
+
+    function getMulddaeBarColor(pct) {
+        if (pct >= 76) return '#ff6b6b';
+        if (pct >= 51) return '#ffa726';
+        if (pct >= 26) return '#4fc3f7';
+        return '#81c784';
     }
 
     // 관측소별 사리 기준 최대 조차 (cm) - 실측 기반 참고값
@@ -1363,16 +1385,16 @@
 
         mulddaeEl.innerHTML = `
             <div class="mulddae-row1">
-                <div class="mulddae-badge" style="background:${mulddae.color}22; color:${mulddae.color};">
+                <div class="mulddae-badge" style="background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}22; color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">
                     <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
                 <div class="mulddae-pct-wrap">
                     <div class="mulddae-pct-head">
                         <span class="mulddae-pct-label-inline">오늘의 유속 (05:00~18:00 기준)</span>
-                        <span class="mulddae-pct-value" style="color:${mulddae.color};">${pctText}</span>
+                        <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
                     </div>
-                    <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${mulddae.color};"></div></div>
+                    <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
                 </div>
             </div>
             <div class="mulddae-desc">${desc}</div>
