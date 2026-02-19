@@ -23,7 +23,7 @@ const DEFAULT_PARAMS = {
   'current':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'tide-time':  { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
   'deviation':  { numOfRows: '50', pageNo: '1', type: 'json' },
-  'tidebed':    { numOfRows: '1500', pageNo: '1', type: 'json' },
+  'tidebed':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'current-fld-ebb': { numOfRows: '20', pageNo: '1', type: 'json' },
 };
 

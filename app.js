@@ -2379,7 +2379,7 @@
                         lat: geo.lat,
                         lot: geo.lon,
                         reqDate: dateStr,
-                        numOfRows: '1500',
+                        numOfRows: '300',
                         pageNo: '1'
                     });
                 }
