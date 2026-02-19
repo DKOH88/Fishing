@@ -1394,7 +1394,7 @@
             if (fishingInfo.windSpeed) detailLines.push(`💨 풍속 ${escapeHTML(fishingInfo.windSpeed)}m/s`);
             if (fishingInfo.tideTimeScore) detailLines.push(`🌙 물때점수 ${escapeHTML(fishingInfo.tideTimeScore)}`);
             const popupData = detailLines.join('\n');
-            fishingText = `<span class="fishing-index-btn" data-popup="${escapeHTML(popupData)}">🎣 바다낚시지수(선상) ${gradeText}</span>`;
+            fishingText = `<span class="fishing-index-btn" data-popup="${escapeHTML(popupData)}">🎣 바다낚시지수(선상) ㅡ ${gradeText}</span>`;
         }
 
         mulddaeEl.innerHTML = `
