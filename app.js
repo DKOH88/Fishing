@@ -1690,9 +1690,6 @@
                 numOfRows: '50',
                 pageNo: '1'
             }).then(parseDeviationText).catch(() => '');
-            const harmonicsPromise = apiCallRaw('/api/khoa/tide-harmonics', {
-                obsCode: stationCode
-            }).then(parseTideHarmonicsText).catch(() => '');
             const fishingPromise = fetchFishingIndexInfo(stationCode, dateStr).catch(() => null);
 
             if (!items || items.length === 0) {
@@ -1730,9 +1727,8 @@
                 rangePct
             };
             renderMulddaeCardFromState();
-            const [deviationText, harmonicsText, fishingInfo] = await Promise.all([
+            const [deviationText, fishingInfo] = await Promise.all([
                 deviationPromise,
-                harmonicsPromise,
                 fishingPromise
             ]);
             setTideDataStamp(buildTideDataStampText(items, dateStr));
@@ -1756,7 +1752,7 @@
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
                         <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
-                        <div class="time">${[deviationText, harmonicsText].filter(Boolean).join(' · ')}</div>
+                        <div class="time">${deviationText || ''}</div>
                     </div>
                 </div>`;
 
@@ -2110,44 +2106,6 @@
         const rounded = Math.round(v);
         const sign = rounded > 0 ? '+' : '';
         return `편차 ${sign}${rounded}cm`;
-    }
-
-    function parseTideHarmonicsText(raw) {
-        if (!raw) return '';
-        const base = raw.result?.data != null ? raw.result.data : raw;
-        const rows = Array.isArray(base)
-            ? base
-            : (Array.isArray(base?.data) ? base.data : (base && typeof base === 'object' ? [base] : []));
-        if (!rows || rows.length === 0) return '';
-
-        const normalized = rows.map((row) => {
-            const nameRaw = extractByKeysCaseInsensitive(row, ['hc_name', 'hcName', 'constituent', 'name']);
-            const amp = toFiniteNumber(extractByKeysCaseInsensitive(row, ['amp', 'amplitude', 'ampl']));
-            const name = nameRaw == null ? '' : String(nameRaw).trim().toUpperCase();
-            return { name, amp };
-        }).filter((r) => r.name && Number.isFinite(r.amp));
-        if (normalized.length === 0) return '';
-
-        const byName = new Map();
-        normalized.forEach((r) => {
-            if (!byName.has(r.name)) byName.set(r.name, r);
-        });
-
-        const preferred = ['M2', 'S2', 'K1', 'O1'];
-        const picked = [];
-        preferred.forEach((key) => {
-            const hit = byName.get(key);
-            if (hit) picked.push(hit);
-        });
-
-        if (picked.length === 0) {
-            normalized.sort((a, b) => b.amp - a.amp);
-            normalized.slice(0, 4).forEach((r) => picked.push(r));
-        }
-        if (picked.length === 0) return '';
-
-        const text = picked.map((r) => `${r.name} ${r.amp.toFixed(2)}`).join(' ');
-        return `조화 ${text}`;
     }
 
     function getActiveFishingPlaceName(stationCode) {

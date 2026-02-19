@@ -245,13 +245,6 @@ function validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, max
   return null;
 }
 
-function validateKhoaTideHarmonicsObsCode(obsCode) {
-  if (!obsCode || !/^[A-Za-z0-9_-]{2,20}$/.test(obsCode)) {
-    return 'Invalid obsCode';
-  }
-  return null;
-}
-
 function buildKhoaCacheKey(endpoint, paramsStr) {
   return new Request(`https://tide-cache.internal/khoa/${endpoint}/${paramsStr}`);
 }
@@ -284,14 +277,6 @@ function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, sca
   if (scale != null && String(scale) !== '') {
     url.searchParams.set('Scale', String(scale));
   }
-  url.searchParams.set('ResultType', 'json');
-  return url.toString();
-}
-
-function buildKhoaTideHarmonicsUrl(obsCode, serviceKey) {
-  const url = new URL(`${KHOA_BASE}/tideObsHar/search.do`);
-  url.searchParams.set('ServiceKey', serviceKey);
-  url.searchParams.set('ObsCode', obsCode);
   url.searchParams.set('ResultType', 'json');
   return url.toString();
 }
@@ -418,61 +403,6 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
 
     // 캐싱 (영역 조류는 특정 시각 데이터 → 같은 TTL)
     const ttl = computeCacheTTL('khoa-current-area', date);
-    const response = new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${ttl}`,
-        'X-Cache': 'MISS',
-        'X-Cache-TTL': `${ttl}s`,
-        ...getCorsHeaders(request),
-      },
-    });
-
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
-  } else if (khoaEndpoint === 'tide-harmonics') {
-    const obsCode = url.searchParams.get('obsCode');
-    const err = validateKhoaTideHarmonicsObsCode(obsCode);
-    if (err) return jsonResponse({ error: err }, 400, request);
-
-    const cacheKey = buildKhoaCacheKey('tide-harmonics', obsCode);
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      const resp = addCorsHeaders(cached, request);
-      resp.headers.set('X-Cache', 'HIT');
-      return resp;
-    }
-
-    const upstreamUrl = buildKhoaTideHarmonicsUrl(obsCode, khoaKey);
-    let upstreamResp;
-    try {
-      upstreamResp = await fetch(upstreamUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
-      });
-    } catch (e) {
-      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
-    }
-
-    if (!upstreamResp.ok) {
-      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
-    }
-
-    let data;
-    try {
-      data = await upstreamResp.json();
-    } catch (e) {
-      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
-    }
-
-    const rows = data?.result?.data;
-    if (!rows || (Array.isArray(rows) && rows.length === 0)) {
-      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400, request);
-    }
-
-    // 조화상수는 자주 변하지 않으므로 장기 캐시
-    const ttl = 30 * 24 * 60 * 60;
     const response = new Response(JSON.stringify(data), {
       status: 200,
       headers: {
@@ -793,7 +723,7 @@ export default {
     }
 
     // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
-    const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area|tide-harmonics)$/);
+    const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
     if (khoaMatch) {
       return handleKhoaRequest(khoaMatch[1], url, env, ctx, request);
     }
@@ -807,7 +737,7 @@ export default {
           '/api/tide-hilo', '/api/tide-level', '/api/current',
           '/api/tide-time', '/api/deviation', '/api/tidebed', '/api/current-fld-ebb',
           '/api/fishing-index',
-          '/api/khoa/current-point', '/api/khoa/current-area', '/api/khoa/tide-harmonics',
+          '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/lunar',
           '/api/visitor'
         ]
