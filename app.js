@@ -1570,8 +1570,8 @@
         'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
         'tideFcstTime/GetTideFcstTimeApiService': '/api/tide-time',
         'deviationCal/GetDeviationCalApiService': '/api/deviation',
-        'lsTermTideObs/GetLsTermTideObsApiService': '/api/ls-term-tide-obs',
-        'tidebed/GetTideBedPreApiService': '/api/tidebed',
+        'lsTermTideObs/GetLSTermTideObsApiService': '/api/ls-term-tide-obs',
+        'tidebed/GetTidebedApiService': '/api/tidebed',
         'crntFcstFldEbb/GetCrntFcstFldEbbApiService': '/api/current-fld-ebb',
         'fcstFishingv2/GetFcstFishingApiServicev2': '/api/fishing-index',
     };
@@ -1691,7 +1691,7 @@
                 numOfRows: '50',
                 pageNo: '1'
             }).then(parseDeviationText).catch(() => '');
-            const lsTermObsItemsPromise = apiCall('lsTermTideObs/GetLsTermTideObsApiService', {
+            const lsTermObsItemsPromise = apiCall('lsTermTideObs/GetLSTermTideObsApiService', {
                 obsCode: stationCode,
                 reqDate: dateStr,
                 numOfRows: '24',
@@ -2114,7 +2114,7 @@
         const rec = items[0] || {};
 
         let raw = extractByKeysCaseInsensitive(rec, [
-            'deviation', 'deviationVal', 'deviationVl', 'devVal', 'devVl', 'dev'
+            'tdlvOfs', 'deviation', 'deviationVal', 'deviationVl', 'devVal', 'devVl', 'dev'
         ]);
         if (raw == null) {
             for (const k of Object.keys(rec)) {
@@ -2460,12 +2460,16 @@
 
             let tideBedItems = [];
             try {
-                tideBedItems = await apiCall('tidebed/GetTideBedPreApiService', {
-                    obsCode: stationCode,
-                    reqDate: dateStr,
-                    numOfRows: '1500',
-                    pageNo: '1'
-                });
+                const geo = getActiveGeoPoint(stationCode);
+                if (geo) {
+                    tideBedItems = await apiCall('tidebed/GetTidebedApiService', {
+                        lat: geo.lat,
+                        lot: geo.lon,
+                        reqDate: dateStr,
+                        numOfRows: '1500',
+                        pageNo: '1'
+                    });
+                }
             } catch(e) {
                 // tidebed 실패 시 기존 보간 예측 유지
             }
@@ -2496,7 +2500,7 @@
             const tideBedMap = buildTimeSeriesMap(
                 tideBedItems,
                 ['predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime', 'obsrvnDt'],
-                ['predcTdlvVl', 'bscTdlvHgt', 'tdlvHgt', 'tdlvVl', 'tideLevel']
+                ['obsrvnHgt', 'predcTdlvVl', 'bscTdlvHgt', 'tdlvHgt', 'tdlvVl', 'tideLevel']
             );
             const tideTimeMap = buildTimeSeriesMap(
                 tideTimeItems,

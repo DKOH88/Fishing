@@ -13,8 +13,8 @@ const ENDPOINT_MAP = {
   'current':    'crntFcstTime/GetCrntFcstTimeApiService',
   'tide-time':  'tideFcstTime/GetTideFcstTimeApiService',
   'deviation':  'deviationCal/GetDeviationCalApiService',
-  'ls-term-tide-obs': 'lsTermTideObs/GetLsTermTideObsApiService',
-  'tidebed':    'tidebed/GetTideBedPreApiService',
+  'ls-term-tide-obs': 'lsTermTideObs/GetLSTermTideObsApiService',
+  'tidebed':    'tidebed/GetTidebedApiService',
   'current-fld-ebb': 'crntFcstFldEbb/GetCrntFcstFldEbbApiService',
 };
 
@@ -130,7 +130,7 @@ function computeCacheTTL(endpoint, reqDate) {
 }
 
 const PASSTHROUGH_QUERY_KEYS = new Set([
-  'numOfRows', 'pageNo', 'min', 'hour', 'minute', 'placeName', 'gubun', 'include', 'exclude'
+  'numOfRows', 'pageNo', 'min', 'hour', 'minute', 'placeName', 'gubun', 'include', 'exclude', 'lat', 'lot'
 ]);
 
 function extractPassthroughParams(url) {
@@ -159,12 +159,32 @@ function buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey, passthroughParams 
   const url = new URL(`${UPSTREAM_BASE}/${path}`);
 
   url.searchParams.set('serviceKey', apiKey);
-  url.searchParams.set('obsCode', obsCode);
-  url.searchParams.set('reqDate', reqDate);
+
+  if (endpoint === 'tidebed') {
+    // TideBED는 obsCode 대신 lat/lot 좌표 사용
+    const lat = passthroughParams.lat;
+    const lot = passthroughParams.lot;
+    if (lat) url.searchParams.set('lat', lat);
+    if (lot) url.searchParams.set('lot', lot);
+  } else {
+    url.searchParams.set('obsCode', obsCode);
+  }
+
+  if (endpoint === 'deviation') {
+    // 편차계산표는 reqDate가 YYYYMM (6자리)
+    url.searchParams.set('reqDate', reqDate.substring(0, 6));
+  } else {
+    url.searchParams.set('reqDate', reqDate);
+  }
 
   const defaults = DEFAULT_PARAMS[endpoint];
   Object.entries(defaults).forEach(([k, v]) => url.searchParams.set(k, v));
-  Object.entries(passthroughParams || {}).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  // tidebed의 lat/lot은 이미 위에서 처리했으므로 제외
+  Object.entries(passthroughParams || {}).forEach(([k, v]) => {
+    if (endpoint === 'tidebed' && (k === 'lat' || k === 'lot')) return;
+    url.searchParams.set(k, v);
+  });
 
   return url.toString();
 }
@@ -797,14 +817,26 @@ export default {
     const passthroughParams = extractPassthroughParams(url);
     const paramSig = makeParamSignature(passthroughParams);
 
-    // 입력 검증
-    const validationError = validateParams(obsCode, reqDate);
-    if (validationError) {
-      return jsonResponse({ error: validationError }, 400, request);
+    // 입력 검증 (tidebed는 obsCode 대신 lat/lot 사용)
+    if (endpoint === 'tidebed') {
+      const lat = passthroughParams.lat;
+      const lot = passthroughParams.lot;
+      if (!lat || !lot || !COORD_RE.test(lat) || !COORD_RE.test(lot)) {
+        return jsonResponse({ error: 'Invalid lat/lot (required for tidebed)' }, 400, request);
+      }
+      if (!reqDate || !/^\d{8}$/.test(reqDate)) {
+        return jsonResponse({ error: 'Invalid reqDate (expected YYYYMMDD)' }, 400, request);
+      }
+    } else {
+      const validationError = validateParams(obsCode, reqDate);
+      if (validationError) {
+        return jsonResponse({ error: validationError }, 400, request);
+      }
     }
 
-    // 캐시 확인
-    const cacheKey = buildCacheKey(endpoint, obsCode, reqDate, paramSig);
+    // 캐시 확인 (tidebed는 lat/lot 기반 캐시키)
+    const cacheId = endpoint === 'tidebed' ? `${passthroughParams.lat}_${passthroughParams.lot}` : obsCode;
+    const cacheKey = buildCacheKey(endpoint, cacheId, reqDate, paramSig);
     const cache = caches.default;
     const cached = await cache.match(cacheKey);
     if (cached) {
