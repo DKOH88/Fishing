@@ -14,3 +14,4 @@
 ✅ 4e697b7 — 바다낚시지수 API를 KHOA 직접 API로 전환
 ✅ 8b5ce9b — 바다낚시지수 API를 data.go.kr로 전환 (선상만)
 ✅ f3aa88d — 바다낚시지수 API 호출을 apiCallRaw로 변경
+✅ 9b6cb41 — 바다낚시지수 API 호출에 캐시 버스팅 파라미터 추가
