@@ -1,5 +1,6 @@
 == Commit Log ==
 
+✅ 3aac9b5 — 유속% 계산 단순화: p10/p90 동적 정규화 → MIN/MAX 고정 정규화 + 갑오징어 규칙 실측 보정
 ✅ 56a0b62 — 보안 강화: CSP unsafe-inline 제거, 듀얼 윈도우 rate limiter 적용
 (Turnstile 토큰 검증 — Worker에서 Cloudflare Turnstile 토큰을 검증하여 브라우저가 아닌 요청 차단은 삭제)
 ✅ 501a85a — 조류 유속 테이블 개선: 막대바 높이 확대, % 표시, 4단계 색상
