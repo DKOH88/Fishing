@@ -240,9 +240,6 @@
         const region = getRegionByStationCode(code);
         buildCurrentSelect(region);
         updateRegionBadges(region);
-        requestFlowStatsPrime(code, getDateStr(), false);
-        const currentCode = getCurrentStation();
-        requestCurrentFlowStatsPrime(currentCode, getDateStr(), false);
     }
 
     // ==================== 검색 기능 ====================
@@ -760,324 +757,50 @@
         'DT_0042': 300, 'IE_0060': 200, 'IE_0061': 350, 'IE_0062': 800,
     };
 
-    // ==================== 물흐름 동적 정규화 (관측소별 p10/p90) ====================
-    const FLOW_STATS_CACHE_PREFIX = 'flowStats.v2.';
-    const FLOW_STATS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7일
-    const FLOW_STATS_LOOKBACK_DAYS = 180;
-    const FLOW_STATS_STEP_DAYS = 5; // tide-hilo 응답이 며칠치 묶음이라 5일 간격 수집
-    const FLOW_STATS_MIN_SAMPLES = 24;
-    const FLOW_STATS_FETCH_CONCURRENCY = 4;
-    const flowStatsMemoryCache = {};
-    const flowStatsInFlight = {};
+    // 관측소별 소조기(조금) 최소 조차 (cm) — 실측 기반 참고값
+    const MIN_TIDAL_RANGE = {
+        // 인천/경기
+        'DT_0001': 200, 'DT_0052': 190, 'DT_0044': 190, 'DT_0032': 180,
+        'DT_0043': 180, 'DT_0093': 185, 'DT_0065': 170, 'DT_0066': 165,
+        'DT_0002': 180, 'DT_0008': 190,
+        // 충남/전북
+        'DT_0050': 150, 'DT_0067': 140, 'DT_0017': 150, 'DT_0025': 150,
+        'DT_0051': 140, 'DT_0024': 140, 'DT_0018': 130, 'DT_0068': 100, 'DT_0037': 90,
+        // 전남서부
+        'DT_0007': 90, 'DT_0035': 70, 'DT_0094': 80,
+        // 전남동부
+        'DT_0028': 80, 'DT_0027': 80, 'DT_0026': 80, 'DT_0092': 70,
+        'DT_0016': 70, 'DT_0049': 70, 'DT_0031': 55,
+        // 남해/경남
+        'DT_0061': 55, 'DT_0014': 45, 'DT_0003': 45, 'DT_0029': 45,
+        'DT_0063': 40, 'DT_0062': 40, 'DT_0056': 35,
+        'DT_0013': 35, 'DT_0033': 40, 'DT_0015': 35, 'DT_0048': 30, 'DT_0030': 25,
+        // 부산/울산
+        'DT_0005': 25, 'DT_0020': 10,
+        // 동해
+        'DT_0091': 5, 'DT_0039': 5, 'DT_0011': 5, 'DT_0057': 5,
+        'DT_0006': 7, 'DT_0012': 5,
+        'DT_0019': 5, 'DT_0034': 5, 'DT_0036': 5,
+        // 제주
+        'DT_0004': 55, 'DT_0022': 45, 'DT_0010': 45, 'DT_0023': 45, 'DT_0021': 80,
+        // 특수 (교본초/이어도/가거초/소청초)
+        'DT_0042': 70, 'IE_0060': 45, 'IE_0061': 80, 'IE_0062': 170,
+    };
 
+    // ==================== 물흐름 퍼센트 유틸리티 ====================
     function clamp(v, lo, hi) {
         return Math.max(lo, Math.min(hi, v));
     }
 
-    function formatDateKey(dateObj) {
-        const y = dateObj.getFullYear();
-        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const d = String(dateObj.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-    }
 
-    function formatReqDate(dateObj) {
-        const y = dateObj.getFullYear();
-        const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-        const d = String(dateObj.getDate()).padStart(2, '0');
-        return `${y}${m}${d}`;
-    }
-
-    function parseReqDate(reqDate) {
-        if (!/^\d{8}$/.test(reqDate || '')) return null;
-        const y = parseInt(reqDate.substring(0, 4), 10);
-        const m = parseInt(reqDate.substring(4, 6), 10);
-        const d = parseInt(reqDate.substring(6, 8), 10);
-        const dt = new Date(y, m - 1, d);
-        return Number.isNaN(dt.getTime()) ? null : dt;
-    }
-
-    function addDays(dateObj, days) {
-        const d = new Date(dateObj);
-        d.setDate(d.getDate() + days);
-        return d;
-    }
-
-    function startOfDay(dateObj) {
-        const d = new Date(dateObj);
-        d.setHours(0, 0, 0, 0);
-        return d;
-    }
-
-    function getDaysAheadFromToday(dateStr) {
-        const target = parseReqDate(dateStr);
-        if (!target) return null;
-        const today = startOfDay(new Date());
-        const targetDay = startOfDay(target);
-        return Math.round((targetDay.getTime() - today.getTime()) / 86400000);
-    }
-
-    const FLOW_WEIGHT_PROFILE_DEFAULT = { midStart: 0.35, midEnd: 0.70, near: 0.85 };
-    const FLOW_WEIGHT_PROFILE_BY_STATION = {
-        // 오천권(보령) 백테스트(2026, badatime 355) 기반 보정
-        // 겨울: 유속 반영 낮게, 여름: 유속 반영 높게
-        'DT_0025': {
-            cold: { midStart: 0.15, midEnd: 0.30, near: 0.35 },     // 11~4월
-            shoulder: { midStart: 0.30, midEnd: 0.50, near: 0.55 }, // 5,10월
-            warm: { midStart: 0.45, midEnd: 0.72, near: 0.80 },     // 6~9월
-        },
-    };
-
-    function getFlowSeason(dateStr) {
-        if (!/^\d{8}$/.test(dateStr || '')) return 'shoulder';
-        const month = parseInt(dateStr.substring(4, 6), 10);
-        if ([11, 12, 1, 2, 3, 4].includes(month)) return 'cold';
-        if ([6, 7, 8, 9].includes(month)) return 'warm';
-        return 'shoulder';
-    }
-
-    function getFlowWeightProfile(dateStr, stationCode) {
-        const season = getFlowSeason(dateStr);
-        const byStation = stationCode ? FLOW_WEIGHT_PROFILE_BY_STATION[stationCode] : null;
-        const profile = (byStation && byStation[season]) ? byStation[season] : FLOW_WEIGHT_PROFILE_DEFAULT;
-        const midStart = clamp(Number(profile.midStart), 0, 1);
-        const midEnd = clamp(Number(profile.midEnd), 0, 1);
-        const near = clamp(Number(profile.near), 0, 1);
-        return { season, midStart, midEnd, near, tuned: !!byStation };
-    }
-
-    function getFlowRecencyPolicy(dateStr, stationCode) {
-        const daysAhead = getDaysAheadFromToday(dateStr);
-        if (!Number.isFinite(daysAhead)) return null;
-        const weights = getFlowWeightProfile(dateStr, stationCode);
-
-        if (daysAhead >= 8) {
-            return { stage: 'far', daysAhead, currentWeight: 0, rangeWeight: 1, label: '장기예측', ...weights };
-        }
-
-        if (daysAhead >= 2) {
-            const t = clamp((7 - daysAhead) / 5, 0, 1); // D-7 -> 0, D-2 -> 1
-            const currentWeight = weights.midStart + (weights.midEnd - weights.midStart) * t;
-            return {
-                stage: 'mid',
-                daysAhead,
-                currentWeight,
-                rangeWeight: 1 - currentWeight,
-                label: '근접보정',
-                ...weights
-            };
-        }
-
-        // D-1, 당일, 과거일: 최신 유속값 비중을 높여 반영
-        const currentWeight = weights.near;
-        return {
-            stage: 'near',
-            daysAhead,
-            currentWeight,
-            rangeWeight: 1 - currentWeight,
-            label: daysAhead === 1 ? 'D-1 보정' : (daysAhead === 0 ? '당일보정' : '사후보정'),
-            ...weights
-        };
-    }
-
-    function formatFlowLeadText(daysAhead) {
-        if (!Number.isFinite(daysAhead)) return '';
-        if (daysAhead > 0) return `D-${daysAhead}`;
-        if (daysAhead === 0) return '당일';
-        return `D+${Math.abs(daysAhead)}`;
-    }
-
-    function percentile(sortedValues, p) {
-        if (!sortedValues || sortedValues.length === 0) return null;
-        if (sortedValues.length === 1) return sortedValues[0];
-        const idx = (sortedValues.length - 1) * clamp(p, 0, 1);
-        const lo = Math.floor(idx);
-        const hi = Math.ceil(idx);
-        if (lo === hi) return sortedValues[lo];
-        const w = idx - lo;
-        return sortedValues[lo] * (1 - w) + sortedValues[hi] * w;
-    }
-
-    function getFlowStatsCacheKey(stationCode) {
-        return FLOW_STATS_CACHE_PREFIX + stationCode;
-    }
-
-    function getCachedFlowStats(stationCode) {
-        if (!stationCode) return null;
-        try {
-            const raw = localStorage.getItem(getFlowStatsCacheKey(stationCode));
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object') return null;
-            if (!Number.isFinite(parsed.p10) || !Number.isFinite(parsed.p90)) return null;
-            if (typeof parsed.updatedAt !== 'string') return null;
-            return parsed;
-        } catch {
-            return null;
-        }
-    }
-
-    function setCachedFlowStats(stationCode, stats) {
-        if (!stationCode || !stats) return;
-        try {
-            localStorage.setItem(getFlowStatsCacheKey(stationCode), JSON.stringify(stats));
-        } catch {
-            // localStorage 사용 불가 환경은 메모리 캐시만 사용
-        }
-    }
-
-    function getFlowStats(stationCode) {
-        if (!stationCode) return null;
-        if (flowStatsMemoryCache[stationCode]) return flowStatsMemoryCache[stationCode];
-        const cached = getCachedFlowStats(stationCode);
-        if (cached) {
-            flowStatsMemoryCache[stationCode] = cached;
-            return cached;
-        }
-        return null;
-    }
-
-    function isFlowStatsUsable(stats, dateStr) {
-        if (!stats) return false;
-        if (!Number.isFinite(stats.p10) || !Number.isFinite(stats.p90) || stats.p90 <= stats.p10) return false;
-        if (!stats.updatedAt) return false;
-        const updatedAt = Date.parse(stats.updatedAt);
-        if (!Number.isFinite(updatedAt)) return false;
-        if ((Date.now() - updatedAt) > FLOW_STATS_CACHE_TTL_MS) return false;
-        if (!dateStr || !/^\d{8}$/.test(dateStr)) return true;
-        if (!stats.windowStart || !stats.windowEnd) return true;
-        const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-        return dateKey >= stats.windowStart && dateKey <= stats.windowEnd;
-    }
-
-    function collectDailyDiffsFromItems(items) {
-        const byDay = {};
-        for (const item of items || []) {
-            const predcDt = String(item.predcDt || '');
-            if (predcDt.length < 16) continue;
-            const dateKey = predcDt.substring(0, 10);
-            const time = predcDt.substring(11, 16);
-            if (time < '05:00' || time > '18:00') continue;
-
-            const level = parseFloat(item.predcTdlvVl);
-            const extrSe = parseInt(item.extrSe, 10);
-            if (!Number.isFinite(level) || !Number.isFinite(extrSe)) continue;
-
-            if (!byDay[dateKey]) byDay[dateKey] = { highs: [], lows: [] };
-            if (extrSe % 2 === 1) byDay[dateKey].highs.push(level);
-            else byDay[dateKey].lows.push(level);
-        }
-
-        const diffs = {};
-        Object.entries(byDay).forEach(([dateKey, v]) => {
-            if (v.highs.length === 0 || v.lows.length === 0) return;
-            const diff = Math.max(...v.highs) - Math.min(...v.lows);
-            if (Number.isFinite(diff) && diff > 0) diffs[dateKey] = diff;
-        });
-        return diffs;
-    }
-
-    async function buildFlowStatsForStation(stationCode, baseDateStr) {
-        const endDate = parseReqDate(baseDateStr);
-        if (!endDate) return null;
-        const startDate = addDays(endDate, -FLOW_STATS_LOOKBACK_DAYS);
-        const startKey = formatDateKey(startDate);
-        const endKey = formatDateKey(endDate);
-
-        const reqDates = [];
-        for (let d = new Date(startDate); d <= endDate; d = addDays(d, FLOW_STATS_STEP_DAYS)) {
-            reqDates.push(formatReqDate(d));
-        }
-        if (reqDates[reqDates.length - 1] !== baseDateStr) {
-            reqDates.push(baseDateStr);
-        }
-
-        const dayDiffMap = {};
-        for (let i = 0; i < reqDates.length; i += FLOW_STATS_FETCH_CONCURRENCY) {
-            const chunk = reqDates.slice(i, i + FLOW_STATS_FETCH_CONCURRENCY);
-            const responses = await Promise.all(chunk.map(async (reqDate) => {
-                try {
-                    const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
-                        obsCode: stationCode,
-                        reqDate,
-                        numOfRows: '20',
-                        pageNo: '1'
-                    });
-                    return items;
-                } catch {
-                    return [];
-                }
-            }));
-
-            for (const items of responses) {
-                const dailyDiffs = collectDailyDiffsFromItems(items);
-                Object.entries(dailyDiffs).forEach(([dateKey, diff]) => {
-                    if (dateKey < startKey || dateKey > endKey) return;
-                    dayDiffMap[dateKey] = diff;
-                });
-            }
-        }
-
-        const diffs = Object.values(dayDiffMap).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
-        if (diffs.length < FLOW_STATS_MIN_SAMPLES) return null;
-
-        const p10 = percentile(diffs, 0.10);
-        const p90 = percentile(diffs, 0.90);
-        if (!Number.isFinite(p10) || !Number.isFinite(p90) || p90 <= p10) return null;
-
-        return {
-            stationCode,
-            p10: Math.round(p10 * 10) / 10,
-            p90: Math.round(p90 * 10) / 10,
-            sampleCount: diffs.length,
-            windowStart: startKey,
-            windowEnd: endKey,
-            updatedAt: new Date().toISOString(),
-        };
-    }
-
-    async function primeFlowStats(stationCode, dateStr) {
-        if (!stationCode || !/^\d{8}$/.test(dateStr || '')) return false;
-        const existing = getFlowStats(stationCode);
-        if (isFlowStatsUsable(existing, dateStr)) return false;
-        if (flowStatsInFlight[stationCode]) return flowStatsInFlight[stationCode];
-
-        flowStatsInFlight[stationCode] = (async () => {
-            const stats = await buildFlowStatsForStation(stationCode, dateStr);
-            if (!stats) return false;
-            flowStatsMemoryCache[stationCode] = stats;
-            setCachedFlowStats(stationCode, stats);
-            return true;
-        })().catch(() => false).finally(() => {
-            delete flowStatsInFlight[stationCode];
-        });
-
-        return flowStatsInFlight[stationCode];
-    }
-
-    function requestFlowStatsPrime(stationCode, dateStr, refreshOnUpdate = false) {
-        primeFlowStats(stationCode, dateStr).then((updated) => {
-            if (!updated || !refreshOnUpdate) return;
-            if (stationCode !== getStation() || dateStr !== getDateStr()) return;
-            fetchTideHighLow();
-        }).catch(() => {});
-    }
-
-    // 조차 기반 보조 지표 계산 (fallback)
-    function calcRangeFlowPct(diff, stationCode, dateStr) {
+    // 조차 기반 유속 퍼센트 계산 — MIN/MAX 정규화
+    function calcRangeFlowPct(diff, stationCode) {
         if (diff == null || diff <= 0) return null;
-
-        // 동적 정규화가 준비되어 있으면 우선 사용 (0~100 고정)
-        const stats = getFlowStats(stationCode);
-        if (isFlowStatsUsable(stats, dateStr)) {
-            const normalized = ((diff - stats.p10) / (stats.p90 - stats.p10)) * 100;
-            return Math.round(clamp(normalized, 0, 100));
-        }
-
-        // fallback: 관측소별 최대 조차 기준 (기존 방식, 최소 5% 하한 제거)
-        const maxRange = MAX_TIDAL_RANGE[stationCode] || 300; // fallback: 미등록 관측소용 중간값
-        const pct = Math.round(Math.min(100, (diff / maxRange) * 100));
-        return Math.max(0, pct);
+        const maxRange = MAX_TIDAL_RANGE[stationCode] || 300;
+        const minRange = MIN_TIDAL_RANGE[stationCode] || Math.round(maxRange * 0.2);
+        if (maxRange <= minRange) return null;
+        const pct = ((diff - minRange) / (maxRange - minRange)) * 100;
+        return Math.round(clamp(pct, 0, 100));
     }
 
     function getMulddaeInfo(dateStr) {
@@ -1089,309 +812,10 @@
         return { ...mulddae, lunarMonth: lunar.lunarMonth, lunarDay: lunar.lunarDay };
     }
 
-    // ==================== 물흐름(유속 crsp) 기반 퍼센트 ====================
-    const CURRENT_FLOW_STATS_CACHE_PREFIX = 'currentFlowStats.v1.';
-    const CURRENT_FLOW_STATS_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7일
-    const CURRENT_FLOW_LOOKBACK_DAYS = FLOW_STATS_LOOKBACK_DAYS;
-    const CURRENT_FLOW_STEP_DAYS = FLOW_STATS_STEP_DAYS;
-    const CURRENT_FLOW_MIN_SAMPLES = FLOW_STATS_MIN_SAMPLES;
-    const CURRENT_FLOW_FETCH_CONCURRENCY = FLOW_STATS_FETCH_CONCURRENCY;
-    const currentFlowStatsMemoryCache = {};
-    const currentFlowStatsInFlight = {};
-    const currentFlowSnapshotCache = {};
     let mulddaeCardState = null;
     window._lastMulddaePct = null;
     window._fishingIndexInfo = null;
 
-    function getCurrentFlowStatsCacheKey(currentCode) {
-        return CURRENT_FLOW_STATS_CACHE_PREFIX + currentCode;
-    }
-
-    function getCachedCurrentFlowStats(currentCode) {
-        if (!currentCode) return null;
-        try {
-            const raw = localStorage.getItem(getCurrentFlowStatsCacheKey(currentCode));
-            if (!raw) return null;
-            const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object') return null;
-            if (!Number.isFinite(parsed.p10) || !Number.isFinite(parsed.p90)) return null;
-            if (typeof parsed.updatedAt !== 'string') return null;
-            return parsed;
-        } catch {
-            return null;
-        }
-    }
-
-    function setCachedCurrentFlowStats(currentCode, stats) {
-        if (!currentCode || !stats) return;
-        try {
-            localStorage.setItem(getCurrentFlowStatsCacheKey(currentCode), JSON.stringify(stats));
-        } catch {
-            // localStorage 사용 불가 환경은 메모리 캐시만 사용
-        }
-    }
-
-    function getCurrentFlowStats(currentCode) {
-        if (!currentCode) return null;
-        if (currentFlowStatsMemoryCache[currentCode]) return currentFlowStatsMemoryCache[currentCode];
-        const cached = getCachedCurrentFlowStats(currentCode);
-        if (cached) {
-            currentFlowStatsMemoryCache[currentCode] = cached;
-            return cached;
-        }
-        return null;
-    }
-
-    function isCurrentFlowStatsUsable(stats, dateStr) {
-        if (!stats) return false;
-        if (!Number.isFinite(stats.p10) || !Number.isFinite(stats.p90) || stats.p90 <= stats.p10) return false;
-        if (!stats.updatedAt) return false;
-        const updatedAt = Date.parse(stats.updatedAt);
-        if (!Number.isFinite(updatedAt)) return false;
-        if ((Date.now() - updatedAt) > CURRENT_FLOW_STATS_CACHE_TTL_MS) return false;
-        if (!dateStr || !/^\d{8}$/.test(dateStr)) return true;
-        if (!stats.windowStart || !stats.windowEnd) return true;
-        const dateKey = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-        return dateKey >= stats.windowStart && dateKey <= stats.windowEnd;
-    }
-
-    function collectDailyMaxSpeedsFromItems(items) {
-        const byDay = {};
-        for (const item of items || []) {
-            const predcDt = String(item.predcDt || '');
-            if (predcDt.length < 16) continue;
-            const dateKey = predcDt.substring(0, 10);
-            const time = predcDt.substring(11, 16);
-            if (time < '05:00' || time > '18:00') continue;
-
-            const speed = parseFloat(item.crsp);
-            if (!Number.isFinite(speed) || speed < 0) continue;
-            if (!Number.isFinite(byDay[dateKey]) || speed > byDay[dateKey]) {
-                byDay[dateKey] = speed;
-            }
-        }
-        return byDay;
-    }
-
-    async function buildCurrentFlowStatsForStation(currentCode, baseDateStr) {
-        const endDate = parseReqDate(baseDateStr);
-        if (!endDate) return null;
-        const startDate = addDays(endDate, -CURRENT_FLOW_LOOKBACK_DAYS);
-        const startKey = formatDateKey(startDate);
-        const endKey = formatDateKey(endDate);
-
-        const reqDates = [];
-        for (let d = new Date(startDate); d <= endDate; d = addDays(d, CURRENT_FLOW_STEP_DAYS)) {
-            reqDates.push(formatReqDate(d));
-        }
-        if (reqDates[reqDates.length - 1] !== baseDateStr) {
-            reqDates.push(baseDateStr);
-        }
-
-        const dayMaxMap = {};
-        for (let i = 0; i < reqDates.length; i += CURRENT_FLOW_FETCH_CONCURRENCY) {
-            const chunk = reqDates.slice(i, i + CURRENT_FLOW_FETCH_CONCURRENCY);
-            const responses = await Promise.all(chunk.map(async (reqDate) => {
-                try {
-                    const items = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
-                        obsCode: currentCode,
-                        reqDate,
-                        numOfRows: '300',
-                        pageNo: '1'
-                    });
-                    return items;
-                } catch {
-                    return [];
-                }
-            }));
-
-            for (const items of responses) {
-                const dailyMax = collectDailyMaxSpeedsFromItems(items);
-                Object.entries(dailyMax).forEach(([dateKey, maxSpeed]) => {
-                    if (dateKey < startKey || dateKey > endKey) return;
-                    dayMaxMap[dateKey] = maxSpeed;
-                });
-            }
-        }
-
-        const speeds = Object.values(dayMaxMap).filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
-        if (speeds.length < CURRENT_FLOW_MIN_SAMPLES) return null;
-
-        const p10 = percentile(speeds, 0.10);
-        const p90 = percentile(speeds, 0.90);
-        if (!Number.isFinite(p10) || !Number.isFinite(p90) || p90 <= p10) return null;
-
-        return {
-            currentCode,
-            p10: Math.round(p10 * 10) / 10,
-            p90: Math.round(p90 * 10) / 10,
-            sampleCount: speeds.length,
-            windowStart: startKey,
-            windowEnd: endKey,
-            updatedAt: new Date().toISOString(),
-        };
-    }
-
-    async function primeCurrentFlowStats(currentCode, dateStr) {
-        if (!currentCode || !/^\d{8}$/.test(dateStr || '')) return false;
-        const existing = getCurrentFlowStats(currentCode);
-        if (isCurrentFlowStatsUsable(existing, dateStr)) return false;
-        if (currentFlowStatsInFlight[currentCode]) return currentFlowStatsInFlight[currentCode];
-
-        currentFlowStatsInFlight[currentCode] = (async () => {
-            const stats = await buildCurrentFlowStatsForStation(currentCode, dateStr);
-            if (!stats) return false;
-            currentFlowStatsMemoryCache[currentCode] = stats;
-            setCachedCurrentFlowStats(currentCode, stats);
-            return true;
-        })().catch(() => false).finally(() => {
-            delete currentFlowStatsInFlight[currentCode];
-        });
-
-        return currentFlowStatsInFlight[currentCode];
-    }
-
-    function getCurrentFlowSnapshotKey(currentCode, dateStr) {
-        return `${currentCode || ''}:${dateStr || ''}`;
-    }
-
-    function setCurrentFlowSnapshot(currentCode, dateStr, snapshot) {
-        if (!currentCode || !/^\d{8}$/.test(dateStr || '') || !snapshot) return;
-        currentFlowSnapshotCache[getCurrentFlowSnapshotKey(currentCode, dateStr)] = snapshot;
-    }
-
-    function getCurrentFlowSnapshot(currentCode, dateStr) {
-        if (!currentCode || !/^\d{8}$/.test(dateStr || '')) return null;
-        return currentFlowSnapshotCache[getCurrentFlowSnapshotKey(currentCode, dateStr)] || null;
-    }
-
-    function calcCurrentFlowPct(maxSpeed, currentCode, dateStr) {
-        if (maxSpeed == null || !Number.isFinite(maxSpeed) || maxSpeed < 0) return null;
-        const stats = getCurrentFlowStats(currentCode);
-        if (isCurrentFlowStatsUsable(stats, dateStr)) {
-            const normalized = ((maxSpeed - stats.p10) / (stats.p90 - stats.p10)) * 100;
-            return Math.round(clamp(normalized, 0, 100));
-        }
-        // 초기 수집 전에는 절대 유속값(0~100cm/s)을 임시 퍼센트로 사용
-        return Math.round(clamp(maxSpeed, 0, 100));
-    }
-
-    function resolveMulddaeFlowPct(dateStr, rangePct, currentSnap, stationCode) {
-        const rangeValue = Number.isFinite(rangePct) ? clamp(Math.round(rangePct), 0, 100) : null;
-        const currentValue = (currentSnap && Number.isFinite(currentSnap.pct))
-            ? clamp(Math.round(currentSnap.pct), 0, 100)
-            : null;
-        const policy = getFlowRecencyPolicy(dateStr, stationCode);
-
-        if (currentValue == null && rangeValue == null) {
-            return { pct: null, mode: 'none', sourceLabel: '데이터없음', policy: null };
-        }
-        if (policy == null) {
-            if (currentValue != null) return { pct: currentValue, mode: 'current', sourceLabel: '유속기반', policy: null, currentWeight: 1, rangeWeight: 0 };
-            return { pct: rangeValue, mode: 'range', sourceLabel: '조차기반', policy: null, currentWeight: 0, rangeWeight: 1 };
-        }
-
-        if (policy.stage === 'far') {
-            if (rangeValue != null) {
-                return {
-                    pct: rangeValue,
-                    mode: 'range',
-                    sourceLabel: '조차기반',
-                    policy,
-                    currentWeight: 0,
-                    rangeWeight: 1
-                };
-            }
-            return {
-                pct: currentValue,
-                mode: 'current',
-                sourceLabel: '유속기반',
-                policy,
-                currentWeight: 1,
-                rangeWeight: 0
-            };
-        }
-
-        if (currentValue != null && rangeValue != null) {
-            const blended = Math.round(clamp(
-                currentValue * policy.currentWeight + rangeValue * policy.rangeWeight,
-                0,
-                100
-            ));
-            const mode = policy.stage === 'near' ? 'currentWeighted' : 'hybrid';
-            return {
-                pct: blended,
-                mode,
-                sourceLabel: mode === 'hybrid' ? '혼합보정' : '유속가중',
-                policy,
-                currentWeight: policy.currentWeight,
-                rangeWeight: policy.rangeWeight
-            };
-        }
-
-        if (currentValue != null) {
-            return {
-                pct: currentValue,
-                mode: 'current',
-                sourceLabel: '유속기반',
-                policy,
-                currentWeight: 1,
-                rangeWeight: 0
-            };
-        }
-
-        return {
-            pct: rangeValue,
-            mode: 'range',
-            sourceLabel: '조차기반',
-            policy,
-            currentWeight: 0,
-            rangeWeight: 1
-        };
-    }
-
-    function buildCurrentFlowSnapshot(items, currentCode, dateStr) {
-        if (!items || items.length === 0 || !/^\d{8}$/.test(dateStr || '')) return null;
-        const datePrefix = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
-        const dayItems = items.filter(i => i.predcDt && String(i.predcDt).startsWith(datePrefix));
-        const src = dayItems.filter((item) => {
-            const t = extractCurrentTimeLabel(item);
-            return !!t && t >= '05:00' && t <= '18:00';
-        });
-
-        const speeds = [];
-        for (const item of src) {
-            const speed = parseFloat(item.crsp);
-            if (Number.isFinite(speed) && speed >= 0) speeds.push(speed);
-        }
-
-        const maxSpeed = speeds.length > 0 ? Math.max(...speeds) : null;
-        const pct = calcCurrentFlowPct(maxSpeed, currentCode, dateStr);
-        return {
-            currentCode,
-            dateStr,
-            pct,
-            maxSpeed,
-            sampleCount: speeds.length,
-            obsvtrNm: String((src[0] || dayItems[0] || items[0])?.obsvtrNm || ''),
-            updatedAt: new Date().toISOString(),
-        };
-    }
-
-    function requestCurrentFlowStatsPrime(currentCode, dateStr, refreshOnUpdate = false) {
-        primeCurrentFlowStats(currentCode, dateStr).then((updated) => {
-            if (!updated || !refreshOnUpdate) return;
-            const key = getCurrentFlowSnapshotKey(currentCode, dateStr);
-            const snap = currentFlowSnapshotCache[key];
-            if (snap && Number.isFinite(snap.maxSpeed)) {
-                snap.pct = calcCurrentFlowPct(snap.maxSpeed, currentCode, dateStr);
-                currentFlowSnapshotCache[key] = snap;
-            }
-            if (currentCode === getCurrentStation() && dateStr === getDateStr()) {
-                renderMulddaeCardFromState();
-            }
-        }).catch(() => {});
-    }
 
     function renderMulddaeCardFromState() {
         if (!mulddaeCardState) return;
@@ -1401,11 +825,7 @@
 
         const { dateStr, stationCode, mulddaeBase, diff, rangePct } = mulddaeCardState;
         const mulddae = { ...mulddaeBase };
-        const currentCode = getCurrentStation();
-        const currentSnap = getCurrentFlowSnapshot(currentCode, dateStr);
-        const flowDecision = resolveMulddaeFlowPct(dateStr, rangePct, currentSnap, stationCode);
-        const activePct = flowDecision.pct;
-        if (activePct != null) mulddae.pct = activePct;
+        if (Number.isFinite(rangePct)) mulddae.pct = clamp(Math.round(rangePct), 0, 100);
         window._lastMulddaePct = mulddae.pct;
 
         mulddaeCard.style.display = '';
@@ -1733,7 +1153,6 @@
                 return;
             }
 
-            requestFlowStatsPrime(stationCode, dateStr, true);
             const datePrefix = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
             const todayItems = items.filter(i => i.predcDt && i.predcDt.startsWith(datePrefix));
             const displayItems = todayItems.length > 0 ? todayItems : items.slice(0, 4);
@@ -1752,8 +1171,8 @@
             const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
             const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
 
-            // 물때 카드: 주지표는 유속(crsp), 조차기반은 보조지표로 함께 표시
-            const rangePct = calcRangeFlowPct(diff, stationCode, dateStr);
+            // 물때 카드: 조차(고저차) 기반 MIN/MAX 정규화 퍼센트
+            const rangePct = calcRangeFlowPct(diff, stationCode);
             mulddaeCardState = {
                 dateStr,
                 stationCode,
@@ -2593,22 +2012,24 @@
         },
         gapoh: {
             emoji: '🦑', name: '갑오징어',
-            // 선상: 3~6물 최적, 7~9물 보통, 사리(10물 이상) 및 조금은 비추
-            // 고저차: 300~400cm 최상, 200~300/400~600 보통, 그 외 낮음
+            // 삼길포 실측 조과 기반 (2024.10~11 갑오징어 시즌)
+            // Best: 조금~무시 40~60%, 고저차 300~450cm
+            // Good: 조금~2물 20~56%, 고저차 240~490cm
+            // SoSo: 사리 부근 70%↑ 또는 1물 약조류
             useDiff: true,
             rules: [
-                { cond: (p, n) => p >= 40 && p <= 60,           grade: '최상', desc: (p) => `적정 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
-                { cond: (p, n) => p >= 30 && p < 40,            grade: '보통', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
-                { cond: (p, n) => p > 60 && p < 70,             grade: '보통', desc: (p) => `조류 강한 편(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
-                { cond: (p, n) => p < 30,                       grade: '비추', desc: (p) => `조류 부족(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
+                { cond: (p, n) => p >= 35 && p <= 60,           grade: '최상', desc: (p) => `적정 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
+                { cond: (p, n) => p >= 20 && p < 35,            grade: '보통', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
+                { cond: (p, n) => p > 60 && p <= 70,            grade: '보통', desc: (p) => `조류 강한 편(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
+                { cond: (p, n) => p < 20,                       grade: '비추', desc: (p) => `조류 부족(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
                 { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff >= 300 && diff <= 400) return { grade: '최상', desc: `고저차 적당(${Math.round(diff)}cm) ㅡ 최적` };
+                if (diff >= 300 && diff <= 450) return { grade: '최상', desc: `고저차 적당(${Math.round(diff)}cm) ㅡ 최적` };
                 if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                if (diff > 400 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                if (diff > 500)                 return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
+                if (diff > 450 && diff <= 550)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
+                if (diff > 550)                 return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
                 return { grade: '비추', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 비추천` };
             }
         },
@@ -3278,7 +2699,6 @@
         infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>조류 데이터 로딩...</div></div>';
 
         try {
-            requestCurrentFlowStatsPrime(cStation, dateStr, true);
             const firstPageItems = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
                 obsCode: cStation,
                 reqDate: dateStr,
@@ -3365,10 +2785,6 @@
                 ));
             }
 
-            const flowSnapshot = buildCurrentFlowSnapshot(mergedItems, cStation, dateStr);
-            if (flowSnapshot) {
-                setCurrentFlowSnapshot(cStation, dateStr, flowSnapshot);
-            }
             if (timeFiltered.length === 0) {
                 if (withTimeItems.length === 0) {
                     const fallback = mergedItems.filter((_, idx) => idx % 10 === 0);
