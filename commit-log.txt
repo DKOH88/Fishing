@@ -77,4 +77,4 @@
 ✅ [26-02-21┃23:50:00] 7e2ec18 — 안정성 개선 4차: fetchAll AbortController + renderMulddae debounce
 ✅ [26-02-22┃00:10:00] 6f1e600 — 코드 품질 개선: 인라인 스타일 → CSS 클래스 추출 (#23)
 ✅ [26-02-22┃00:30:00] 3a5df2e — LOW 이슈 일괄 개선: KHOA 중복 코드 통합, hashIP 1회 계산, fetchedAt KST, getNowKST 헬퍼, window._ 제거
-✅ [26-02-22┃01:00:00] {hash} — KST 날짜 계산 리팩토링: Intl.DateTimeFormat 기반 getKSTDateStr/getKSTTimeLabel 헬퍼 + 5곳 중복 포맷팅 통합 (#4)
+✅ [26-02-22┃01:00:00] 45e2630 — KST 날짜 계산 리팩토링: Intl.DateTimeFormat 기반 getKSTDateStr/getKSTTimeLabel 헬퍼 + 5곳 중복 포맷팅 통합 (#4)
