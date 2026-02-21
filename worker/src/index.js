@@ -119,6 +119,13 @@ function getTodayStr() {
   return `${y}${m}${d}`;
 }
 
+/** KST 현재 시각을 ISO 8601 형식(+09:00 오프셋)으로 반환 */
+function kstNowISO() {
+  const kst = getKoreaNow();
+  const p = n => String(n).padStart(2, '0');
+  return `${kst.getUTCFullYear()}-${p(kst.getUTCMonth()+1)}-${p(kst.getUTCDate())}T${p(kst.getUTCHours())}:${p(kst.getUTCMinutes())}:${p(kst.getUTCSeconds())}+09:00`;
+}
+
 async function hashIP(ip) {
   const data = new TextEncoder().encode(ip);
   const buf = await crypto.subtle.digest('SHA-256', data);
@@ -287,6 +294,58 @@ function buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, sca
   return url.toString();
 }
 
+// ==================== KHOA 공통 fetch-cache-respond 헬퍼 ====================
+
+const KHOA_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+async function fetchAndCacheKhoa({ cacheLabel, cacheParamsStr, upstreamUrl, date, request, ctx }) {
+  const cacheKey = buildKhoaCacheKey(cacheLabel, cacheParamsStr);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const resp = addCorsHeaders(cached, request);
+    resp.headers.set('X-Cache', 'HIT');
+    return resp;
+  }
+
+  let upstreamResp;
+  try {
+    upstreamResp = await fetch(upstreamUrl, { headers: { 'User-Agent': KHOA_UA } });
+  } catch (e) {
+    return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
+  }
+
+  if (!upstreamResp.ok) {
+    return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
+  }
+
+  let data;
+  try {
+    data = await upstreamResp.json();
+  } catch (e) {
+    return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
+  }
+
+  if (!data.result || !data.result.data) {
+    return jsonResponse({ error: 'KHOA API returned no data' }, 400, request);
+  }
+
+  const ttl = computeCacheTTL(cacheLabel, date);
+  const response = new Response(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${ttl}`,
+      'X-Cache': 'MISS',
+      'X-Cache-TTL': `${ttl}s`,
+      ...getCorsHeaders(request),
+    },
+  });
+
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
 // ==================== KHOA Request Handler ====================
 
 async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
@@ -299,63 +358,15 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     const lat = url.searchParams.get('lat');
     const lon = url.searchParams.get('lon');
     const date = url.searchParams.get('date');
-
     const err = validateKhoaCurrentPointParams(lat, lon, date);
     if (err) return jsonResponse({ error: err }, 400, request);
 
-    // 캐시 확인
-    const cacheParamsStr = `${lat}_${lon}_${date}`;
-    const cacheKey = buildKhoaCacheKey('current-point', cacheParamsStr);
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      const resp = addCorsHeaders(cached, request);
-      resp.headers.set('X-Cache', 'HIT');
-      return resp;
-    }
-
-    // KHOA API 호출
-    const upstreamUrl = buildKhoaCurrentPointUrl(lat, lon, date, khoaKey);
-    let upstreamResp;
-    try {
-      upstreamResp = await fetch(upstreamUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
-      });
-    } catch (e) {
-      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
-    }
-
-    if (!upstreamResp.ok) {
-      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
-    }
-
-    let data;
-    try {
-      data = await upstreamResp.json();
-    } catch (e) {
-      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
-    }
-
-    // KHOA 에러 체크: result.meta 없거나 data 없으면 에러
-    if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data' }, 400, request);
-    }
-
-    // 캐싱
-    const ttl = computeCacheTTL('khoa-current-point', date);
-    const response = new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${ttl}`,
-        'X-Cache': 'MISS',
-        'X-Cache-TTL': `${ttl}s`,
-        ...getCorsHeaders(request),
-      },
+    return fetchAndCacheKhoa({
+      cacheLabel: 'khoa-current-point',
+      cacheParamsStr: `${lat}_${lon}_${date}`,
+      upstreamUrl: buildKhoaCurrentPointUrl(lat, lon, date, khoaKey),
+      date, request, ctx,
     });
-
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
 
   } else if (khoaEndpoint === 'current-area') {
     const date = url.searchParams.get('date');
@@ -366,62 +377,15 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     const minY = url.searchParams.get('minY');
     const maxY = url.searchParams.get('maxY');
     const scale = url.searchParams.get('scale') || '4000000';
-
     const err = validateKhoaCurrentAreaParams(date, hour, minute, minX, maxX, minY, maxY, scale);
     if (err) return jsonResponse({ error: err }, 400, request);
 
-    // 캐시 확인
-    const cacheParamsStr = `${date}_${hour}_${minute}_${minX}_${maxX}_${minY}_${maxY}_${scale}`;
-    const cacheKey = buildKhoaCacheKey('current-area', cacheParamsStr);
-    const cache = caches.default;
-    const cached = await cache.match(cacheKey);
-    if (cached) {
-      const resp = addCorsHeaders(cached, request);
-      resp.headers.set('X-Cache', 'HIT');
-      return resp;
-    }
-
-    // KHOA API 호출
-    const upstreamUrl = buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, scale, khoaKey);
-    let upstreamResp;
-    try {
-      upstreamResp = await fetch(upstreamUrl, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36' }
-      });
-    } catch (e) {
-      return jsonResponse({ error: 'KHOA fetch failed', detail: e.message }, 502, request);
-    }
-
-    if (!upstreamResp.ok) {
-      return jsonResponse({ error: `KHOA returned HTTP ${upstreamResp.status}` }, 502, request);
-    }
-
-    let data;
-    try {
-      data = await upstreamResp.json();
-    } catch (e) {
-      return jsonResponse({ error: 'Failed to parse KHOA response' }, 502, request);
-    }
-
-    if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data' }, 400, request);
-    }
-
-    // 캐싱 (영역 조류는 특정 시각 데이터 → 같은 TTL)
-    const ttl = computeCacheTTL('khoa-current-area', date);
-    const response = new Response(JSON.stringify(data), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${ttl}`,
-        'X-Cache': 'MISS',
-        'X-Cache-TTL': `${ttl}s`,
-        ...getCorsHeaders(request),
-      },
+    return fetchAndCacheKhoa({
+      cacheLabel: 'khoa-current-area',
+      cacheParamsStr: `${date}_${hour}_${minute}_${minX}_${maxX}_${minY}_${maxY}_${scale}`,
+      upstreamUrl: buildKhoaCurrentAreaUrl(date, hour, minute, minX, maxX, minY, maxY, scale, khoaKey),
+      date, request, ctx,
     });
-
-    ctx.waitUntil(cache.put(cacheKey, response.clone()));
-    return response;
   }
 
   return jsonResponse({ error: 'Unknown KHOA endpoint' }, 404, request);
@@ -429,16 +393,13 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
 
 // ==================== 방문자 카운터 ====================
 
-async function handleVisitorRequest(request, env) {
+async function handleVisitorRequest(request, env, ipHash) {
   const KV = env.VISITOR_STORE;
   if (!KV) {
     return jsonResponse({ error: 'Visitor store not configured' }, 500, request);
   }
 
   const todayStr = getTodayStr();
-  const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
-  const ipHash = await hashIP(ip);
-
   const dailyIpKey = `ip:${todayStr}:${ipHash}`;
   const totalIpKey = `ip_total:${ipHash}`;
   const dailyCountKey = `today:${todayStr}`;
@@ -580,12 +541,10 @@ const RATE_LIMIT_MICRO_MAX = 25;      // 10초당 최대 25건
 const RATE_LIMIT_MINUTE_WINDOW = 60;  // 60초 분 윈도우
 const RATE_LIMIT_MINUTE_MAX = 120;    // 분당 최대 120건
 
-async function checkRateLimit(request, env, isVisitor = false) {
+async function checkRateLimit(ipHash, env, isVisitor = false) {
   const KV = env.VISITOR_STORE;
   if (!KV) return null;
 
-  const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
-  const ipHash = await hashIP(ip);
   const now = Math.floor(Date.now() / 1000);
 
   // visitor 엔드포인트는 더 엄격한 제한 적용
@@ -902,7 +861,7 @@ async function handleWeather(env, request, url, ctx) {
       sky, pty, tmp, fcstTime,
       baseDate, baseTime,
       nx: parseInt(nx), ny: parseInt(ny),
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: kstNowISO(),
     };
 
     const jsonBody = JSON.stringify(result);
@@ -1039,7 +998,7 @@ async function handleDischargeNotice(ctx, request, env) {
       ctx.waitUntil(KV.put('discharge-known-nos', JSON.stringify(currentNos)));
     } catch (_) { /* KV 실패 시 newCount=0으로 진행 */ }
 
-    const result = { notices: rows, newCount, newNos, fetchedAt: new Date().toISOString() };
+    const result = { notices: rows, newCount, newNos, fetchedAt: kstNowISO() };
     const jsonBody = JSON.stringify(result);
 
     // 30분 캐시 저장 (방류 공지는 자주 변하지 않음)
@@ -1261,10 +1220,14 @@ export default {
       return jsonResponse({ error: 'Method not allowed' }, 405, request);
     }
 
+    // IP 해시를 1회 계산하여 rate limiter + visitor 카운터에서 재사용
+    const ip = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+    const ipHash = await hashIP(ip);
+
     // Rate limiting (visitor는 엄격한 제한)
     const isVisitorEndpoint = url.pathname === '/api/visitor';
     {
-      const retryAfter = await checkRateLimit(request, env, isVisitorEndpoint);
+      const retryAfter = await checkRateLimit(ipHash, env, isVisitorEndpoint);
       if (retryAfter !== null) {
         return new Response(JSON.stringify({ error: 'Too many requests' }), {
           status: 429,
@@ -1279,7 +1242,7 @@ export default {
 
     // 방문자 카운터 API: GET /api/visitor
     if (isVisitorEndpoint) {
-      return handleVisitorRequest(request, env);
+      return handleVisitorRequest(request, env, ipHash);
     }
 
     // 음양력 변환 API: GET /api/lunar?solYear=2026&solMonth=09&solDay=01

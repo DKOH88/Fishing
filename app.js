@@ -1,6 +1,8 @@
     // ==================== CONFIG ====================
     function safeMin(arr) { return arr.reduce((m, v) => v < m ? v : m, Infinity); }
     function safeMax(arr) { return arr.reduce((m, v) => v > m ? v : m, -Infinity); }
+    /** 현재 시각을 KST(UTC+9) Date 객체로 반환 */
+    function getNowKST() { return new Date(Date.now() + 9 * 60 * 60 * 1000); }
     const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
 
     // ==================== 방문자 카운터 ====================
@@ -26,6 +28,19 @@
 
     // #18+#19: fetchAll 중복 호출/타임아웃 시 in-flight 요청 취소용
     let _fetchAllController = null;
+
+    // ==================== 앱 상태 변수 (window.* → 모듈 스코프) ====================
+    let _selectedPort = null;
+    let _weatherInfo = null;
+    let _dischargePrefetch = null;
+    let _dischargeLoaded = false;
+    let _dischargeData = null;
+    let _lastMulddaePct = null;
+    let _fishingIndexInfo = null;
+    let _chartData = null;
+    let _hlData = null;
+    let _sunTimes = null;
+    let _zoneData = [];
 
     // ==================== 지역 데이터 (관측소 + 조류 예보점 통합) ====================
     const REGIONS = [
@@ -184,7 +199,7 @@
         { name: '백사장항', lat: 36.59, lon: 126.31, region: '충남', station: 'DT_0067', stationName: '안흥', current: '23GA01', currentName: '안면도서측' },
         { name: '전곡항', lat: 37.15, lon: 126.66, region: '경기', station: 'DT_0008', stationName: '안산', current: '19LTC01', currentName: '화성방조제' },
     ];
-    window._selectedPort = null;
+    _selectedPort = null;
 
     // ==================== 관측소/조류 연동 ====================
     function getRegionByStationCode(code) {
@@ -391,7 +406,7 @@
     }
 
     async function loadWeather() {
-        const port = window._selectedPort;
+        const port = _selectedPort;
         if (!port) return;
         const { nx, ny } = latLonToGrid(port.lat, port.lon);
 
@@ -399,14 +414,14 @@
             const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}`);
             if (!resp.ok) throw new Error('API error');
             const data = await resp.json();
-            if (!data.sky) { window._weatherInfo = null; return; }
+            if (!data.sky) { _weatherInfo = null; return; }
 
             // 주간/야간 판정 (06~18시 주간)
             const hour = data.fcstTime ? parseInt(data.fcstTime.slice(0, 2)) : new Date().getHours();
             const isNight = hour < 6 || hour >= 18;
             const iconFile = getWeatherIconFile(data.sky, data.pty, isNight);
 
-            window._weatherInfo = {
+            _weatherInfo = {
                 iconFile,
                 tmp: data.tmp || '--',
                 sky: data.sky,
@@ -419,7 +434,7 @@
             }
         } catch (e) {
             console.warn('[weather] load failed:', e);
-            window._weatherInfo = null;
+            _weatherInfo = null;
         }
     }
 
@@ -442,7 +457,7 @@
             if (port.current) {
                 currentSel.value = port.current;
             }
-            window._selectedPort = port;
+            _selectedPort = port;
 
             // 포트 정보 설정 (배너 숨기고 검색바에 표시)
             document.getElementById('portBannerName').textContent = port.name;
@@ -517,7 +532,7 @@
                 }
             }
         }
-        window._selectedPort = null;
+        _selectedPort = null;
 
         // 배너 숨기기
         document.getElementById('portBanner').style.display = 'none';
@@ -535,7 +550,7 @@
     // ==================== INIT ====================
     document.addEventListener('DOMContentLoaded', () => {
         loadVisitorCount();
-        const today = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+        const today = getNowKST();
         document.getElementById('dateInput').value = today.toISOString().split('T')[0];
         updateDateDisplay();
         document.getElementById('dateInput').addEventListener('change', () => { updateDateDisplay(); fetchAll(); });
@@ -570,11 +585,11 @@
                 if (btn.dataset.tab === 'discharge') {
                     _clearDischargeNewBadge(); // 탭 뱃지 제거
                     // 현재 newNos를 "확인함"으로 저장 + 목록 N 뱃지 제거
-                    if (window._dischargeData && window._dischargeData.newNos) {
-                        _markNosSeen(window._dischargeData.newNos);
+                    if (_dischargeData && _dischargeData.newNos) {
+                        _markNosSeen(_dischargeData.newNos);
                     }
                     document.querySelectorAll('.discharge-row.is-new-post').forEach(el => el.classList.remove('is-new-post'));
-                    if (!window._dischargeLoaded) loadDischargeNotices();
+                    if (!_dischargeLoaded) loadDischargeNotices();
                 }
             });
         });
@@ -641,9 +656,9 @@
 
         // 페이지 로드 시 백그라운드 프리페치 (await 없이 fire-and-forget)
         if (!_getClientCache(DISCHARGE_CACHE_KEY)) {
-            window._dischargePrefetch = _fetchDischargeData();
+            _dischargePrefetch = _fetchDischargeData();
             // 프리페치 완료 시 새 글 감지 → 탭 애니메이션 (확인한 글 제외)
-            window._dischargePrefetch.then(data => {
+            _dischargePrefetch.then(data => {
                 if (data && data.newCount > 0) {
                     const unseen = _getUnseenNos(data.newNos);
                     if (unseen.length > 0) _showDischargeNewBadge(unseen.length);
@@ -664,9 +679,9 @@
                     if (cached) { data = cached; }
                 }
                 // 2) 프리페치 Promise 활용
-                if (!data && window._dischargePrefetch) {
-                    data = await window._dischargePrefetch;
-                    window._dischargePrefetch = null;
+                if (!data && _dischargePrefetch) {
+                    data = await _dischargePrefetch;
+                    _dischargePrefetch = null;
                 }
                 // 3) 네트워크 fetch
                 if (!data) {
@@ -676,8 +691,8 @@
                 _setClientCache(DISCHARGE_CACHE_KEY, data, DISCHARGE_CACHE_TTL);
                 const notices = data.notices || [];
 
-                window._dischargeLoaded = true;
-                window._dischargeData = data;
+                _dischargeLoaded = true;
+                _dischargeData = data;
 
                 // 아직 확인하지 않은 새 글 번호 (N 뱃지용)
                 const unseenNos = _getUnseenNos(data.newNos);
@@ -688,7 +703,7 @@
                     return;
                 }
 
-                const portName = window._selectedPort ? window._selectedPort.name : null;
+                const portName = _selectedPort ? _selectedPort.name : null;
                 const newNoSet = new Set(unseenNos);
 
                 let html = '<table class="discharge-table"><thead><tr>';
@@ -744,7 +759,7 @@
 
         // 새로고침 버튼 (강제 갱신)
         document.getElementById('dischargeReloadBtn')?.addEventListener('click', () => {
-            window._dischargeLoaded = false;
+            _dischargeLoaded = false;
             loadDischargeNotices(true);
         });
 
@@ -756,7 +771,7 @@
                 loadDischargeNotices(true);
             } else {
                 // 비활성 상태면 다음 진입 시 새로 로드하도록 플래그 리셋
-                window._dischargeLoaded = false;
+                _dischargeLoaded = false;
             }
         }, 30 * 60 * 1000);
 
@@ -1254,8 +1269,8 @@
     }
 
     let mulddaeCardState = null;
-    window._lastMulddaePct = null;
-    window._fishingIndexInfo = null;
+    _lastMulddaePct = null;
+    _fishingIndexInfo = null;
 
     // #17: rAF debounce — 같은 프레임 내 다중 호출을 1회로 통합
     let _mulddaeRenderPending = false;
@@ -1278,7 +1293,7 @@
         const { dateStr, stationCode, mulddaeBase, diff, rangePct } = mulddaeCardState;
         const mulddae = { ...mulddaeBase };
         if (Number.isFinite(rangePct)) mulddae.pct = clamp(Math.round(rangePct), 0, 100);
-        window._lastMulddaePct = mulddae.pct;
+        _lastMulddaePct = mulddae.pct;
 
         mulddaeCard.style.display = '';
         document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
@@ -1292,8 +1307,8 @@
 
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
         const pctText = pctValue != null ? `${pctValue}%` : '-';
-        const fishingInfo = (window._fishingIndexInfo && window._fishingIndexInfo.reqDate === dateStr)
-            ? window._fishingIndexInfo
+        const fishingInfo = (_fishingIndexInfo && _fishingIndexInfo.reqDate === dateStr)
+            ? _fishingIndexInfo
             : null;
         let fishingText = '';
 
@@ -1329,7 +1344,7 @@
             <div class="fishing-weather-row">
                 ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : '<div></div>'}
                 ${(() => {
-                    const w = window._weatherInfo;
+                    const w = _weatherInfo;
                     if (!w) return '';
                     const t = parseFloat(w.tmp);
                     const tDisplay = isNaN(t) ? '--' : (Number.isInteger(t) ? t : t.toFixed(1));
@@ -1712,14 +1727,14 @@
                     }
 
                     // 점진적 렌더링: 고저조 보간 곡선으로 즉시 프리뷰 표시
-                    const hlData = window._hlData || [];
+                    const hlData = _hlData || [];
                     if (hlData.length >= 2) {
                         const interp = interpolateFromHiLo(hlData);
                         const timeFilter = (lbl) => lbl >= '05:00' && lbl <= '18:00';
                         const fIdx = interp.labels.map((l, i) => timeFilter(l) ? i : -1).filter(i => i >= 0);
                         const fLabels = fIdx.map(i => interp.labels[i]);
                         const fPredicted = fIdx.map(i => interp.predicted[i]);
-                        window._chartData = { labels: fLabels, predicted: fPredicted, actual: null, annotations: {} };
+                        _chartData = { labels: fLabels, predicted: fPredicted, actual: null, annotations: {} };
                         renderTideChart(fLabels, fPredicted, null, {});
                     }
 
@@ -1782,7 +1797,7 @@
         try {
             const stationCode = getStation();
             const dateStr = getDateStr();
-            window._fishingIndexInfo = null;
+            _fishingIndexInfo = null;
             const items = prefetchedItems || await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
                 obsCode: stationCode,
                 reqDate: dateStr,
@@ -1848,7 +1863,7 @@
 
             const fishingInfo = await fishingPromise;
             setTideDataStamp(buildTideDataStampText(items, dateStr));
-            window._fishingIndexInfo = fishingInfo;
+            _fishingIndexInfo = fishingInfo;
             renderMulddaeCardFromState();
             // 일출/일몰 계산
             const sunTimes = getSunTimesForStation(dateStr, stationCode);
@@ -1872,7 +1887,7 @@
                     </div>
                 </div>`;
 
-            window._hlData = displayItems;
+            _hlData = displayItems;
         } catch(e) {
             setTideDataStamp('예보 생성시각 -');
             summaryEl.innerHTML = `<div class="error-msg">고저조 오류: ${escapeHTML(e.message)}</div>`;
@@ -2208,7 +2223,7 @@
     }
 
     function getActiveFishingPlaceName(stationCode) {
-        if (window._selectedPort && window._selectedPort.name) return window._selectedPort.name;
+        if (_selectedPort && _selectedPort.name) return _selectedPort.name;
         const byStation = FISHING_PORTS.find((p) => p.station === stationCode);
         if (byStation && byStation.name) return byStation.name;
         let stationName = '';
@@ -2298,7 +2313,7 @@
     }
 
     function getActiveGeoPoint(stationCode) {
-        const selectedPort = window._selectedPort;
+        const selectedPort = _selectedPort;
         if (selectedPort && Number.isFinite(selectedPort.lat) && Number.isFinite(selectedPort.lon)) {
             return { lat: selectedPort.lat, lon: selectedPort.lon, name: selectedPort.name };
         }
@@ -2317,7 +2332,7 @@
     function getKhoaAreaQueryTime(dateStr) {
         const nowDateStr = getDateStr();
         if (dateStr === nowDateStr) {
-            const now = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+            const now = getNowKST();
             const h = now.getUTCHours();
             const m = Math.floor(now.getUTCMinutes() / 10) * 10;
             return { hour: pad2(h), minute: pad2(m), label: `${pad2(h)}:${pad2(m)}` };
@@ -2480,7 +2495,7 @@
             const items = surveyResult.status === 'fulfilled' ? surveyResult.value : [];
             const tideTimeItems = tideTimeResult.status === 'fulfilled' ? tideTimeResult.value : [];
 
-            const hlData = window._hlData || [];
+            const hlData = _hlData || [];
             let labels = [], predicted = [], actual = null;
 
             // 예측조위: 항상 고저조 보간으로 05:00~18:00 전체 곡선 생성
@@ -2588,7 +2603,7 @@
 
             // 일출/일몰 그래프 마커
             const sunTimes = getSunTimesForStation(getDateStr(), getStation());
-            window._sunTimes = sunTimes;
+            _sunTimes = sunTimes;
             const isMobile = window.innerWidth <= 600;
             const chartSunEl = document.getElementById('chartSunInfo');
             if (isMobile && chartSunEl) {
@@ -2619,7 +2634,7 @@
             }
 
             // 활성도 데이터 저장 (어종 버튼용)
-            window._chartData = { labels: fLabels, predicted: fPredicted, actual: fActual, annotations };
+            _chartData = { labels: fLabels, predicted: fPredicted, actual: fActual, annotations };
             renderTideChart(fLabels, fPredicted, fActual, annotations);
         } catch(e) {
             console.error('조위 그래프 오류:', e);
@@ -2816,8 +2831,8 @@
         updateMulddaeSpeciesInfo();
 
         // 차트 다시 그리기
-        if (window._chartData && window._chartData.labels && window._chartData.labels.length > 0) {
-            const { labels, predicted, actual, annotations } = window._chartData;
+        if (_chartData && _chartData.labels && _chartData.labels.length > 0) {
+            const { labels, predicted, actual, annotations } = _chartData;
             renderTideChart(labels, predicted, actual, annotations);
         }
     }
@@ -2825,19 +2840,19 @@
     // 차트 위 speciesLegend에 물돌이 시간 및 어종 범례 표시
     function updateSpeciesTimeRanges() {
         const legendEl = document.getElementById('speciesLegend');
-        if (activeSpecies === 'none' || !SPECIES_CONFIG[activeSpecies] || !window._chartData) {
+        if (activeSpecies === 'none' || !SPECIES_CONFIG[activeSpecies] || !_chartData) {
             legendEl.style.display = 'none';
             return;
         }
         const cfg = SPECIES_CONFIG[activeSpecies];
-        const { labels, predicted } = window._chartData;
+        const { labels, predicted } = _chartData;
         if (!predicted || predicted.length === 0) { legendEl.style.display = 'none'; return; }
 
         // 기존 고조/저조 annotation 위치 기반 정조/물돌이 시각 감지
         const rates = calcTideRates(predicted);
         const slackZones = [];
         const turnTimes = [];
-        const anns = window._chartData.annotations || {};
+        const anns = _chartData.annotations || {};
         const hlPoints = [];
         Object.keys(anns).forEach(key => {
             if (key.match(/^hl_\d+$/) && anns[key].xValue != null) {
@@ -2896,8 +2911,8 @@
 
         // 현재 물때 정보 가져오기
         const mulddae = getMulddaeInfo(getDateStr());
-        if (Number.isFinite(window._lastMulddaePct)) {
-            mulddae.pct = window._lastMulddaePct;
+        if (Number.isFinite(_lastMulddaePct)) {
+            mulddae.pct = _lastMulddaePct;
         }
         // 통합 판정 함수 사용 — 임계값은 SPECIES_RULES에서 한 곳 관리
         const speciesTips = {
@@ -2940,7 +2955,7 @@
     }
 
     function renderTideChart(labels, predicted, actual, baseAnnotations = {}) {
-        window._zoneData = []; // 매 렌더링마다 초기화
+        _zoneData = []; // 매 렌더링마다 초기화
         const annotations = { ...baseAnnotations };
         const canvasEl = document.getElementById('tideChart');
         if (!canvasEl) return;
@@ -2960,7 +2975,7 @@
 
         // 현재 시간 인덱스 (segment 색상 분리용)
         let _tideNowIdx = -1;
-        const _t = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+        const _t = getNowKST();
         const _sd = document.getElementById('dateInput').value;
         const _ts = _t.getUTCFullYear() + '-' + String(_t.getUTCMonth()+1).padStart(2,'0') + '-' + String(_t.getUTCDate()).padStart(2,'0');
         const _isFuture = _sd > _ts;  // 선택 날짜가 오늘 이후(미래)인지
@@ -3057,7 +3072,7 @@
                 const turnEnd = Math.min(labels.length - 1, redEnd + TURN_LEN);
 
                 // zone 데이터 저장 (커스텀 플러그인에서 그래프 안쪽만 채움)
-                window._zoneData.push(
+                _zoneData.push(
                     { start: redStart, end: redEnd, color: 'rgba(255,105,97,0.35)', border: null },
                     { start: turnStart, end: turnEnd, color: 'rgba(100,255,218,0.35)', border: null }
                 );
@@ -3098,7 +3113,7 @@
         }
 
         // 현재 시간 마커 (오늘 날짜 + 05:00~18:00 범위 내) — KST 기준
-        const _today = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
         const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
         if (_selDate === _todayStr && labels.length > 0) {
@@ -3161,7 +3176,7 @@
         const zoneFillPlugin = {
             id: 'zoneFill',
             beforeDatasetsDraw(chart) {
-                if (!window._zoneData || window._zoneData.length === 0) return;
+                if (!_zoneData || _zoneData.length === 0) return;
                 const { ctx: c, chartArea, scales: { x: xScale, y: yScale } } = chart;
                 const meta = chart.getDatasetMeta(0); // predicted 데이터셋
                 if (!meta || !meta.data || meta.data.length === 0) return;
@@ -3170,7 +3185,7 @@
                 c.beginPath();
                 c.rect(chartArea.left, chartArea.top, chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
                 c.clip();
-                window._zoneData.forEach(zone => {
+                _zoneData.forEach(zone => {
                     const startIdx = Math.max(0, Math.floor(zone.start));
                     const endIdx = Math.min(meta.data.length - 1, Math.ceil(zone.end));
                     if (startIdx >= endIdx) return;
@@ -3213,8 +3228,8 @@
         const tideLegendEl = document.getElementById('tideLegend');
         if (tideLegendEl) {
             const hasNow = !!annotations['now_point'];
-            const sunriseTime = (window._sunTimes && window._sunTimes.sunrise) ? window._sunTimes.sunrise : null;
-            const sunsetTime = (window._sunTimes && window._sunTimes.sunset) ? window._sunTimes.sunset : null;
+            const sunriseTime = (_sunTimes && _sunTimes.sunrise) ? _sunTimes.sunrise : null;
+            const sunsetTime = (_sunTimes && _sunTimes.sunset) ? _sunTimes.sunset : null;
             const hasSunInfo = !!(sunriseTime || sunsetTime);
             let html = '';
             if (_isFuture) {
@@ -3246,9 +3261,9 @@
     function startNowMarkerTimer() {
         if (_nowMarkerTimer) clearInterval(_nowMarkerTimer);
         _nowMarkerTimer = setInterval(() => {
-            if (!tideChart || !window._chartData) return;
-            const cd = window._chartData;
-            const now = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+            if (!tideChart || !_chartData) return;
+            const cd = _chartData;
+            const now = getNowKST();
             const selDate = document.getElementById('dateInput').value;
             const todayStr = now.getUTCFullYear() + '-' + String(now.getUTCMonth()+1).padStart(2,'0') + '-' + String(now.getUTCDate()).padStart(2,'0');
             if (selDate !== todayStr) return;
@@ -3575,7 +3590,7 @@
 
         // 현재 시간 인덱스 계산
         let nowIdx = -1;
-        const _today = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
         const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
         if (_selDate === _todayStr && labels.length > 0) {
@@ -3696,7 +3711,7 @@
         const ctx = canvasEl.getContext('2d');
         if (combinedChart) combinedChart.destroy();
 
-        const chartData = window._chartData;
+        const chartData = _chartData;
         const currentData = currentViewState && currentViewState.items ? currentViewState.items : [];
         const infoEl = document.getElementById('combinedChartInfo');
 
@@ -3746,7 +3761,7 @@
 
         // 현재 시간 인덱스 계산 (segment 색상 분리용, datasets 생성 전에 필요)
         let nowIdx = -1;
-        const _today = new Date(new Date().getTime() + 9 * 60 * 60 * 1000);
+        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
         const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
         const _isCombinedFuture = _selDate > _todayStr;  // 미래 날짜 여부
