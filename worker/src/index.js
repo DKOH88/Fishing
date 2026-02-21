@@ -814,7 +814,7 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
 async function handleDischargeNotice(ctx, request) {
   // 10분 캐시
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.internal/discharge-notice', { method: 'GET' });
+  const cacheKey = new Request('https://cache.internal/discharge-notice-v2', { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     // 캐시된 응답에 현재 요청의 CORS 헤더 적용
@@ -881,6 +881,31 @@ async function handleDischargeNotice(ctx, request) {
         }
       }
     }
+
+    // 각 방류 글의 상세 내용 크롤링 (병렬)
+    const detailPromises = rows.map(async (row) => {
+      if (!row.seq) return;
+      try {
+        const detailResp = await fetch(
+          `https://rims.ekr.or.kr/awminfo/WsNoticeListSub.do?seq=${row.seq}`,
+          { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)', 'Accept': 'text/html' } }
+        );
+        if (!detailResp.ok) return;
+        const detailHtml = await detailResp.text();
+        // "내용" 셀 추출: <th>내용</th> 다음 <td>...</td>
+        const contentMatch = detailHtml.match(/<th[^>]*>\s*내용\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+        if (contentMatch) {
+          // HTML → 텍스트 변환: &nbsp; → 공백, <br> → 줄바꿈, 태그 제거
+          row.content = contentMatch[1]
+            .replace(/&nbsp;/g, ' ')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<[^>]+>/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+        }
+      } catch (_) { /* 상세 실패 시 content 없이 진행 */ }
+    });
+    await Promise.all(detailPromises);
 
     const result = { notices: rows, fetchedAt: new Date().toISOString() };
     const jsonBody = JSON.stringify(result);

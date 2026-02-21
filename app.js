@@ -493,49 +493,24 @@
         });
 
         // ==================== 방류 계획 알림 ====================
-        // 지사명 → 지역 매핑 (FISHING_PORTS.region과 대응)
-        const JISA_REGION_MAP = {
-            '당진': '충남', '서산': '충남', '태안': '충남', '보령': '충남', '서천': '충남',
-            '홍성': '충남', '예산': '충남', '아산': '충남', '천안': '충남', '논산': '충남',
-            '부여': '충남', '공주': '충남', '청양': '충남', '세종': '충남',
-            '평택': '경기', '화성': '경기', '수원': '경기', '여주': '경기', '이천': '경기',
-            '양평': '경기', '광주': '경기', '연천': '경기', '포천': '경기', '가평': '경기',
-            '파주': '경기', '고양': '경기', '강화': '경기', '옹진': '경기', '김포': '경기', '안성': '경기',
-            '홍천': '강원', '춘천': '강원', '원주': '강원', '강릉': '강원', '속초': '강원',
-            '고성': '강원', '양양': '강원', '철원': '강원', '화천': '강원', '동해': '강원',
-            '보은': '충북', '충주': '충북', '제천': '충북', '단양': '충북', '청주': '충북',
-            '진천': '충북', '괴산': '충북', '증평': '충북', '음성': '충북', '옥천': '충북', '영동': '충북',
-            '남원': '전북', '순창': '전북', '동진': '전북', '군산': '전북', '익산': '전북',
-            '전주': '전북', '완주': '전북', '임실': '전북', '고창': '전북', '정읍': '전북', '부안': '전북',
-            '순천': '전남', '광양': '전남', '여수': '전남', '강진': '전남', '목포': '전남',
-            '무안': '전남', '신안': '전남', '곡성': '전남', '구례': '전남', '고흥': '전남',
-            '보성': '전남', '화순': '전남', '장흥': '전남', '해남': '전남', '완도': '전남',
-            '영암': '전남', '영광': '전남', '진도': '전남', '나주': '전남', '담양': '전남',
-            '함평': '전남', '장성': '전남',
-            '안동': '경북', '칠곡': '경북', '구미': '경북', '김천': '경북', '예천': '경북',
-            '영주': '경북', '봉화': '경북', '달성': '경북', '의성': '경북', '군위': '경북',
-            '영덕': '경북', '울진': '경북', '포항': '경북', '울릉': '경북', '경주': '경북',
-            '영천': '경북', '경산': '경북', '청도': '경북', '고령': '경북', '성주': '경북',
-            '상주': '경북', '문경': '경북', '청송': '경북', '영양': '경북',
-            '김해': '경남', '양산': '경남', '부산': '경남', '통영': '경남', '거제': '경남',
-            '울산': '경남', '진주': '경남', '산청': '경남', '의령': '경남', '함안': '경남',
-            '창녕': '경남', '밀양': '경남', '창원': '경남', '사천': '경남', '거창': '경남',
-            '함양': '경남', '합천': '경남', '하동': '경남', '남해': '경남',
-            '제주': '제주', '서귀포': '제주',
+        // 낚시포인트 → 관련 댐/호수 키워드 매핑 (제목에서 매칭)
+        const PORT_DAM_KEYWORDS = {
+            '오천항': ['보령'], '대천항': ['보령'], '무창포': ['보령'],
+            '홍원항': ['보령'], '대야도': ['보령'], '영목항': ['보령'],
+            '마검포항': ['보령'], '백사장항': ['보령'], '신진도항': ['보령'],
+            '남당항': ['보령', '홍성'], '구매항': ['보령', '홍성'],
+            '삼길포항': ['삽교', '석문', '간월'], '간월도': ['삽교', '석문', '간월'],
+            '안흥외항': ['서산', '삽교'], '궁리포구': ['서산'],
+            '전곡항': ['아산', '평택', '남양'],
+            '격포항': ['부안', '동진'], '부안변산': ['부안', '동진'],
+            '비응항': ['금강', '군산'], '선유도': ['금강', '군산'],
+            '녹동항': ['고흥', '나로'], '마량항': ['강진', '장흥', '탐진'],
         };
 
-        function getJisaRegion(jisaName) {
-            // "당진지사" → "당진" → 충남
-            for (const [keyword, region] of Object.entries(JISA_REGION_MAP)) {
-                if (jisaName.includes(keyword)) return region;
-            }
-            return null;
-        }
-
-        function getCurrentPortRegion() {
-            const port = window._selectedPort;
-            if (port) return port.region;
-            return null;
+        function isDischargeRelevant(title, portName) {
+            const keywords = PORT_DAM_KEYWORDS[portName];
+            if (!keywords) return false;
+            return keywords.some(kw => title.includes(kw));
         }
 
         async function loadDischargeNotices() {
@@ -558,28 +533,41 @@
                     return;
                 }
 
-                const portRegion = getCurrentPortRegion();
+                const portName = window._selectedPort ? window._selectedPort.name : null;
 
                 let html = '<table class="discharge-table"><thead><tr>';
-                html += '<th>번호</th><th>제목</th><th>지역</th><th>등록일</th>';
+                html += '<th>제목</th><th>등록일</th>';
                 html += '</tr></thead><tbody>';
 
-                for (const n of notices) {
-                    const jisaRegion = getJisaRegion(n.region);
-                    const isMatch = portRegion && jisaRegion === portRegion;
-                    const rowClass = isMatch ? ' class="discharge-highlight"' : '';
-                    const linkStart = n.link ? `<a href="${n.link}" target="_blank" rel="noopener">` : '';
-                    const linkEnd = n.link ? '</a>' : '';
-                    html += `<tr${rowClass}>`;
-                    html += `<td>${n.no}</td>`;
-                    html += `<td>${linkStart}${n.title}${linkEnd}</td>`;
-                    html += `<td>${n.region}</td>`;
+                for (let i = 0; i < notices.length; i++) {
+                    const n = notices[i];
+                    const isMatch = portName && isDischargeRelevant(n.title, portName);
+                    const rowClass = isMatch ? ' discharge-highlight' : '';
+                    const hasContent = n.content && n.content.trim();
+                    html += `<tr class="discharge-row${rowClass}" data-idx="${i}">`;
+                    html += `<td><span class="discharge-title" data-idx="${i}"><span class="arrow">▶</span>${n.title}</span></td>`;
                     html += `<td>${n.date}</td>`;
                     html += '</tr>';
+                    if (hasContent) {
+                        html += `<tr class="discharge-content-row" id="discharge-content-${i}">`;
+                        html += `<td colspan="2" class="discharge-content">${n.content}</td>`;
+                        html += '</tr>';
+                    }
                 }
 
                 html += '</tbody></table>';
                 container.innerHTML = html;
+
+                // 아코디언 클릭 이벤트
+                container.querySelectorAll('.discharge-title').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const idx = el.dataset.idx;
+                        const contentRow = document.getElementById(`discharge-content-${idx}`);
+                        if (!contentRow) return;
+                        const isOpen = contentRow.classList.toggle('open');
+                        el.classList.toggle('open', isOpen);
+                    });
+                });
 
                 if (updatedEl && data.fetchedAt) {
                     const d = new Date(data.fetchedAt);
