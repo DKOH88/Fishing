@@ -74,3 +74,4 @@
 ✅ [26-02-21┃22:45:00] 3731db6 — 보안·안정성 개선: XSS 방어 + script defer + parseFloat/null 체크 + 오타 수정
 ✅ [26-02-21┃23:10:00] a033d15 — 보안·품질 개선 2차: raw 노출 제거, nx/ny 검증, 캐시키 날짜, 캐시 안전, label for, meta desc
 ✅ [26-02-21┃23:30:00] a291e95 — 안정성 개선 3차: CORS 강화 + Math.min/max 안전화 + 방류 크롤링 동시성 제한
+✅ [26-02-21┃23:50:00] 7e2ec18 — 안정성 개선 4차: fetchAll AbortController + renderMulddae debounce
