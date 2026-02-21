@@ -1054,83 +1054,99 @@ async function handleWeather(env, request, url, ctx) {
   const fcstBaseTime = String(fcstBaseHour).padStart(2, '0') + '30';
 
   try {
-    // ── 1) AWS 실관측 기온 (기상청 API허브) ──
+    // ── 병렬 호출: (AWS→초단기실황) 와 (초단기예보 SKY) 동시 시작 ──
     let tmp = null, pty = null, wsd = null, vec = null, fcstTime = null, awsStn = null;
-    if (apihubKey && lat && lon) {
-      const fLat = parseFloat(lat), fLon = parseFloat(lon);
-      if (!isNaN(fLat) && !isNaN(fLon)) {
-        awsStn = findNearestAws(fLat, fLon);
-        if (awsStn) {
-          try {
-            const aws = await fetchAwsTemperature(awsStn, apihubKey);
-            if (aws) {
-              tmp = aws.ta;
-              if (aws.re === '1') pty = '1'; // 강수 감지 시 PTY=1(비)
-              fcstTime = aws.obsTime ? aws.obsTime.slice(8, 12) : null;
-            }
-          } catch (e) { console.log('[weather] AWS fetch error:', e.message); }
-        }
-      }
-    }
 
-    // ── 2) 초단기실황 fallback (AWS 실패 시) ──
-    if (tmp === null) {
-      let baseDate = yyyymmdd;
-      let baseHour = hh;
-      if (mm < 15) {
-        baseHour = hh - 1;
-        if (baseHour < 0) { baseHour = 23; const y = new Date(now.getTime() - 86400000); baseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
-      }
-      const baseTime = String(baseHour).padStart(2, '0') + '00';
-      const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
-        + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
-        + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
-      try {
-        const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-        if (ncstResp.ok) {
-          const ncstData = await ncstResp.json();
-          const ncstItems = ncstData?.response?.body?.items?.item;
-          if (ncstItems && Array.isArray(ncstItems)) {
-            for (const item of ncstItems) {
-              if (item.category === 'T1H') tmp = item.obsrValue;
-              if (item.category === 'PTY') pty = item.obsrValue;
-              if (item.category === 'WSD') wsd = item.obsrValue;
-              if (item.category === 'VEC') vec = item.obsrValue;
-            }
-            fcstTime = baseTime;
+    // A) AWS + 초단기실황 (순차 fallback)
+    const tempPromise = (async () => {
+      // 1) AWS 실관측 기온 (기상청 API허브)
+      if (apihubKey && lat && lon) {
+        const fLat = parseFloat(lat), fLon = parseFloat(lon);
+        if (!isNaN(fLat) && !isNaN(fLon)) {
+          awsStn = findNearestAws(fLat, fLon);
+          if (awsStn) {
+            try {
+              const aws = await fetchAwsTemperature(awsStn, apihubKey);
+              if (aws) {
+                tmp = aws.ta;
+                if (aws.re === '1') pty = '1';
+                fcstTime = aws.obsTime ? aws.obsTime.slice(8, 12) : null;
+              }
+            } catch (e) { console.log('[weather] AWS fetch error:', e.message); }
           }
         }
-      } catch (e) { /* fallback 실패 */ }
-    }
+      }
+      // 2) 초단기실황 fallback (AWS 실패 시)
+      if (tmp === null) {
+        let baseDate = yyyymmdd;
+        let baseHour = hh;
+        if (mm < 15) {
+          baseHour = hh - 1;
+          if (baseHour < 0) { baseHour = 23; const y = new Date(now.getTime() - 86400000); baseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
+        }
+        const baseTime = String(baseHour).padStart(2, '0') + '00';
+        const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
+          + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
+          + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
+        try {
+          const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+          if (ncstResp.ok) {
+            const ncstData = await ncstResp.json();
+            const ncstItems = ncstData?.response?.body?.items?.item;
+            if (ncstItems && Array.isArray(ncstItems)) {
+              for (const item of ncstItems) {
+                if (item.category === 'T1H') tmp = item.obsrValue;
+                if (item.category === 'PTY') pty = item.obsrValue;
+                if (item.category === 'WSD') wsd = item.obsrValue;
+                if (item.category === 'VEC') vec = item.obsrValue;
+              }
+              fcstTime = baseTime;
+            }
+          }
+        } catch (e) { /* fallback 실패 */ }
+      }
+    })();
 
-    // ── 3) 초단기예보 (SKY 하늘상태 + T1H/PTY fallback) ──
+    // B) 초단기예보 (SKY 하늘상태) — 독립적이므로 A와 동시 시작
     let sky = null;
-    const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
-      + `?serviceKey=${apiKey}&numOfRows=60&pageNo=1&dataType=JSON`
-      + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}&nx=${nx}&ny=${ny}`;
-    try {
-      const fcstResp = await fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-      if (fcstResp.ok) {
-        const fcstData = await fcstResp.json();
-        const fcstItems = fcstData?.response?.body?.items?.item;
-        if (fcstItems && Array.isArray(fcstItems)) {
-          const targetHour = String(hh).padStart(2, '0') + '00';
-          for (const item of fcstItems) {
-            if (item.fcstTime === targetHour) {
-              if (item.category === 'SKY') sky = item.fcstValue;
-              if (item.category === 'T1H' && tmp === null) tmp = item.fcstValue;
-              if (item.category === 'PTY' && pty === null) pty = item.fcstValue;
-              if (item.category === 'WSD' && wsd === null) wsd = item.fcstValue;
-              if (item.category === 'VEC' && vec === null) vec = item.fcstValue;
+    let fcstFallback = {};  // tmp/pty/wsd/vec fallback 값 임시 저장
+    const skyPromise = (async () => {
+      const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
+        + `?serviceKey=${apiKey}&numOfRows=60&pageNo=1&dataType=JSON`
+        + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}&nx=${nx}&ny=${ny}`;
+      try {
+        const fcstResp = await fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+        if (fcstResp.ok) {
+          const fcstData = await fcstResp.json();
+          const fcstItems = fcstData?.response?.body?.items?.item;
+          if (fcstItems && Array.isArray(fcstItems)) {
+            const targetHour = String(hh).padStart(2, '0') + '00';
+            for (const item of fcstItems) {
+              if (item.fcstTime === targetHour) {
+                if (item.category === 'SKY') sky = item.fcstValue;
+                if (item.category === 'T1H') fcstFallback.tmp = item.fcstValue;
+                if (item.category === 'PTY') fcstFallback.pty = item.fcstValue;
+                if (item.category === 'WSD') fcstFallback.wsd = item.fcstValue;
+                if (item.category === 'VEC') fcstFallback.vec = item.fcstValue;
+              }
+            }
+            if (sky === null) {
+              const first = fcstItems.find(i => i.category === 'SKY');
+              if (first) sky = first.fcstValue;
             }
           }
-          if (sky === null) {
-            const first = fcstItems.find(i => i.category === 'SKY');
-            if (first) sky = first.fcstValue;
-          }
         }
-      }
-    } catch (e) { /* 예보 실패 */ }
+      } catch (e) { /* 예보 실패 */ }
+    })();
+
+    // 두 호출 모두 완료 대기
+    await Promise.allSettled([tempPromise, skyPromise]);
+
+    // 초단기예보 fallback 적용 (AWS/실황에서 못 가져온 값만)
+    if (tmp === null && fcstFallback.tmp) tmp = fcstFallback.tmp;
+    if (pty === null && fcstFallback.pty) pty = fcstFallback.pty;
+    if (wsd === null && fcstFallback.wsd) wsd = fcstFallback.wsd;
+    if (vec === null && fcstFallback.vec) vec = fcstFallback.vec;
 
     const result = {
       sky, pty, tmp, wsd, vec, fcstTime,
