@@ -176,7 +176,7 @@
 
     // ==================== 낚시 포인트 프리셋 (가장 가까운 관측소/조류예보점 매핑) ====================
     const FISHING_PORTS = [
-        { name: '오천항', lat: 36.38, lon: 126.47, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만' },
+        { name: '오천항', lat: 36.38, lon: 126.47, region: '충남', station: 'DT_0025', stationName: '보령', current: '16LTC03', currentName: '천수만', wxLat: 36.4396, wxLon: 126.5228 },
         { name: '삼길포항', lat: 37.00, lon: 126.45, region: '충남', station: 'DT_0017', stationName: '대산', current: '07DS02', currentName: '대산항' },
         { name: '대천항', lat: 36.32, lon: 126.51, region: '충남', station: 'DT_0025', stationName: '보령', current: '07KS01', currentName: '원산도' },
         { name: '홍원항', lat: 36.30, lon: 126.48, region: '충남', station: 'DT_0051', stationName: '서천마량', current: '12JB11', currentName: '비인만' },
@@ -416,10 +416,13 @@
     async function loadWeather() {
         const port = _selectedPort;
         if (!port) return;
-        const { nx, ny } = latLonToGrid(port.lat, port.lon);
+        // 날씨용 별도 좌표(wxLat/wxLon)가 있으면 우선 사용 (기상청 동/면 대표좌표)
+        const wLat = port.wxLat || port.lat;
+        const wLon = port.wxLon || port.lon;
+        const { nx, ny } = latLonToGrid(wLat, wLon);
 
         try {
-            const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}&lat=${port.lat}&lon=${port.lon}`);
+            const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}&lat=${wLat}&lon=${wLon}`);
             if (!resp.ok) throw new Error('API error');
             const data = await resp.json();
             if (!data.sky) { _weatherInfo = null; return; }
