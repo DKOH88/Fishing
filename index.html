@@ -250,6 +250,12 @@
         @keyframes weatherFadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes weatherIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 
+        /* 방류 새 글 알림 뱃지 + 펄스 */
+        .tab-btn .new-badge { display: none; background: var(--high); color: #fff; font-size: 0.65em; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 700; vertical-align: middle; }
+        .tab-btn.has-new .new-badge { display: inline; }
+        @keyframes tabNewPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,82,82,0.5); } 50% { box-shadow: 0 0 8px 3px rgba(255,82,82,0.3); } }
+        .tab-btn.has-new { animation: tabNewPulse 2s ease-in-out infinite; }
+
         .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
 
         @media (max-width: 600px) {
@@ -364,7 +370,7 @@
             <button class="tab-btn active" data-tab="tide">물때/조위</button>
             <button class="tab-btn" data-tab="current">조류 유속</button>
             <button class="tab-btn" data-tab="combined">조위-유속 그래프</button>
-            <button class="tab-btn" data-tab="discharge">민물방류계획</button>
+            <button class="tab-btn" data-tab="discharge">민물방류계획<span class="new-badge"></span></button>
         </div>
 
         <!-- Tide Tab -->

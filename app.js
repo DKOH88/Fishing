@@ -561,9 +561,10 @@
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
                 document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-                // 방류 탭 최초 진입 시 로드
-                if (btn.dataset.tab === 'discharge' && !window._dischargeLoaded) {
-                    loadDischargeNotices();
+                // 방류 탭 진입 시
+                if (btn.dataset.tab === 'discharge') {
+                    _clearDischargeNewBadge(); // 새 글 알림 제거
+                    if (!window._dischargeLoaded) loadDischargeNotices();
                 }
             });
         });
@@ -598,9 +599,28 @@
                 .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); });
         }
 
+        // 새 글 알림: 탭 버튼에 뱃지 표시
+        function _showDischargeNewBadge(count) {
+            if (count <= 0) return;
+            const btn = document.querySelector('.tab-btn[data-tab="discharge"]');
+            if (!btn) return;
+            btn.classList.add('has-new');
+            const badge = btn.querySelector('.new-badge');
+            if (badge) badge.textContent = count;
+        }
+        function _clearDischargeNewBadge() {
+            const btn = document.querySelector('.tab-btn[data-tab="discharge"]');
+            if (!btn) return;
+            btn.classList.remove('has-new');
+        }
+
         // 페이지 로드 시 백그라운드 프리페치 (await 없이 fire-and-forget)
         if (!_getClientCache(DISCHARGE_CACHE_KEY)) {
             window._dischargePrefetch = _fetchDischargeData();
+            // 프리페치 완료 시 새 글 감지 → 탭 애니메이션
+            window._dischargePrefetch.then(data => {
+                if (data && data.newCount > 0) _showDischargeNewBadge(data.newCount);
+            }).catch(() => {});
         }
 
         async function loadDischargeNotices(forceRefresh) {
@@ -630,6 +650,9 @@
 
                 window._dischargeLoaded = true;
                 window._dischargeData = data;
+
+                // 새 글 뱃지 갱신 (forceRefresh 시에도)
+                if (data.newCount > 0) _showDischargeNewBadge(data.newCount);
 
                 if (notices.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">현재 방류 계획 알림이 없습니다.</div>';
