@@ -106,24 +106,33 @@ function validateParams(obsCode, reqDate) {
   return null;
 }
 
+/** KST(UTC+9) Date 객체 반환 — Date 산술(end-of-day 등)이 필요할 때만 사용 */
 function getKoreaNow() {
-  const now = new Date();
-  return new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return new Date(Date.now() + 9 * 60 * 60 * 1000);
 }
 
+/** Intl 기반 KST 날짜/시간 파츠 반환 (date 미지정 시 현재 시각) */
+function _kstParts(date) {
+  const p = {};
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(date || new Date()).forEach(({ type, value }) => { p[type] = value; });
+  return p;
+}
+
+/** KST 오늘 날짜 'YYYYMMDD' (캐시 키, 비교용) */
 function getTodayStr() {
-  const kst = getKoreaNow();
-  const y = kst.getUTCFullYear();
-  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
-  const d = String(kst.getUTCDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
+  const p = _kstParts();
+  return `${p.year}${p.month}${p.day}`;
 }
 
 /** KST 현재 시각을 ISO 8601 형식(+09:00 오프셋)으로 반환 */
 function kstNowISO() {
-  const kst = getKoreaNow();
-  const p = n => String(n).padStart(2, '0');
-  return `${kst.getUTCFullYear()}-${p(kst.getUTCMonth()+1)}-${p(kst.getUTCDate())}T${p(kst.getUTCHours())}:${p(kst.getUTCMinutes())}:${p(kst.getUTCSeconds())}+09:00`;
+  const p = _kstParts();
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+09:00`;
 }
 
 async function hashIP(ip) {
@@ -1505,15 +1514,12 @@ export default {
 
     const cache = caches.default;
 
-    // KST 기준 오늘 ~ +7일 날짜 생성
-    const kstNow = getKoreaNow();
+    // KST 기준 오늘 ~ +7일 날짜 생성 (Intl 기반)
     const dates = [];
     for (let d = 0; d < 8; d++) {
-      const target = new Date(kstNow.getTime() + d * 24 * 60 * 60 * 1000);
-      const y = target.getUTCFullYear();
-      const m = String(target.getUTCMonth() + 1).padStart(2, '0');
-      const day = String(target.getUTCDate()).padStart(2, '0');
-      dates.push(`${y}${m}${day}`);
+      const target = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
+      const p = _kstParts(target);
+      dates.push(`${p.year}${p.month}${p.day}`);
     }
 
     // 중복 제거된 태스크 목록 생성

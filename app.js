@@ -1,8 +1,16 @@
     // ==================== CONFIG ====================
     function safeMin(arr) { return arr.reduce((m, v) => v < m ? v : m, Infinity); }
     function safeMax(arr) { return arr.reduce((m, v) => v > m ? v : m, -Infinity); }
-    /** 현재 시각을 KST(UTC+9) Date 객체로 반환 */
+    /** 현재 시각을 KST(UTC+9) Date 객체로 반환 — Date 산술용 (시간차 비교 등) */
     function getNowKST() { return new Date(Date.now() + 9 * 60 * 60 * 1000); }
+    /** KST 오늘 날짜를 'YYYY-MM-DD' 형식으로 반환 (Intl 기반, 서머타임 안전) */
+    function getKSTDateStr() { return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date()); }
+    /** KST 현재 시각을 10분 단위 라운드 스냅하여 'HH:MM' 라벨로 반환 */
+    function getKSTTimeLabel() {
+        const now = getNowKST();
+        const snapped = Math.round((now.getUTCHours() * 60 + now.getUTCMinutes()) / 10) * 10;
+        return String(Math.floor(snapped / 60)).padStart(2, '0') + ':' + String(snapped % 60).padStart(2, '0');
+    }
     const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
 
     // ==================== 방문자 카운터 ====================
@@ -550,8 +558,7 @@
     // ==================== INIT ====================
     document.addEventListener('DOMContentLoaded', () => {
         loadVisitorCount();
-        const today = getNowKST();
-        document.getElementById('dateInput').value = today.toISOString().split('T')[0];
+        document.getElementById('dateInput').value = getKSTDateStr();
         updateDateDisplay();
         document.getElementById('dateInput').addEventListener('change', () => { updateDateDisplay(); fetchAll(); });
 
@@ -937,7 +944,7 @@
     }
     function getDateStr() {
         const v = document.getElementById('dateInput').value;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return new Date(new Date().getTime()+9*60*60*1000).toISOString().split('T')[0].replace(/-/g, '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return getKSTDateStr().replace(/-/g, '');
         return v.replace(/-/g, '');
     }
     function getStation() { return document.getElementById('stationSelect').value; }
@@ -2975,13 +2982,11 @@
 
         // 현재 시간 인덱스 (segment 색상 분리용)
         let _tideNowIdx = -1;
-        const _t = getNowKST();
         const _sd = document.getElementById('dateInput').value;
-        const _ts = _t.getUTCFullYear() + '-' + String(_t.getUTCMonth()+1).padStart(2,'0') + '-' + String(_t.getUTCDate()).padStart(2,'0');
+        const _ts = getKSTDateStr();
         const _isFuture = _sd > _ts;  // 선택 날짜가 오늘 이후(미래)인지
         if (_sd === _ts && labels.length > 0) {
-            const _sn = Math.round((_t.getUTCHours() * 60 + _t.getUTCMinutes()) / 10) * 10;
-            _tideNowIdx = labels.indexOf(String(Math.floor(_sn / 60)).padStart(2,'0') + ':' + String(_sn % 60).padStart(2,'0'));
+            _tideNowIdx = labels.indexOf(getKSTTimeLabel());
         }
 
         const datasets = [{
@@ -3113,17 +3118,10 @@
         }
 
         // 현재 시간 마커 (오늘 날짜 + 05:00~18:00 범위 내) — KST 기준
-        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
-        const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
+        const _todayStr = getKSTDateStr();
         if (_selDate === _todayStr && labels.length > 0) {
-            const nowH = _today.getUTCHours(), nowM = _today.getUTCMinutes();
-            const nowTotal = nowH * 60 + nowM;
-            // 10분 단위로 스냅
-            const snapped = Math.round(nowTotal / 10) * 10;
-            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
-            const snapMM = String(snapped % 60).padStart(2, '0');
-            const nowLabel = snapHH + ':' + snapMM;
+            const nowLabel = getKSTTimeLabel();
             const nowIdx = labels.indexOf(nowLabel);
             if (nowIdx >= 0) {
                 const nowYActual = (hasActual && normalizedActual[nowIdx] != null) ? normalizedActual[nowIdx] : null;
@@ -3263,16 +3261,10 @@
         _nowMarkerTimer = setInterval(() => {
             if (!tideChart || !_chartData) return;
             const cd = _chartData;
-            const now = getNowKST();
             const selDate = document.getElementById('dateInput').value;
-            const todayStr = now.getUTCFullYear() + '-' + String(now.getUTCMonth()+1).padStart(2,'0') + '-' + String(now.getUTCDate()).padStart(2,'0');
-            if (selDate !== todayStr) return;
+            if (selDate !== getKSTDateStr()) return;
 
-            const nowTotal = now.getUTCHours() * 60 + now.getUTCMinutes();
-            const snapped = Math.round(nowTotal / 10) * 10;
-            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
-            const snapMM = String(snapped % 60).padStart(2, '0');
-            const nowLabel = snapHH + ':' + snapMM;
+            const nowLabel = getKSTTimeLabel();
             const nowIdx = cd.labels.indexOf(nowLabel);
 
             const ann = tideChart.options.plugins.annotation.annotations;
@@ -3590,15 +3582,10 @@
 
         // 현재 시간 인덱스 계산
         let nowIdx = -1;
-        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
-        const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
+        const _todayStr = getKSTDateStr();
         if (_selDate === _todayStr && labels.length > 0) {
-            const nowH = _today.getUTCHours(), nowM = _today.getUTCMinutes();
-            const snapped = Math.round((nowH * 60 + nowM) / 10) * 10;
-            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
-            const snapMM = String(snapped % 60).padStart(2, '0');
-            nowIdx = labels.indexOf(snapHH + ':' + snapMM);
+            nowIdx = labels.indexOf(getKSTTimeLabel());
         }
 
         // annotation 객체 생성
@@ -3761,16 +3748,11 @@
 
         // 현재 시간 인덱스 계산 (segment 색상 분리용, datasets 생성 전에 필요)
         let nowIdx = -1;
-        const _today = getNowKST();
         const _selDate = document.getElementById('dateInput').value;
-        const _todayStr = _today.getUTCFullYear() + '-' + String(_today.getUTCMonth()+1).padStart(2,'0') + '-' + String(_today.getUTCDate()).padStart(2,'0');
+        const _todayStr = getKSTDateStr();
         const _isCombinedFuture = _selDate > _todayStr;  // 미래 날짜 여부
         if (_selDate === _todayStr && allLabels.length > 0) {
-            const nowH = _today.getUTCHours(), nowM = _today.getUTCMinutes();
-            const snapped = Math.round((nowH * 60 + nowM) / 10) * 10;
-            const snapHH = String(Math.floor(snapped / 60)).padStart(2, '0');
-            const snapMM = String(snapped % 60).padStart(2, '0');
-            nowIdx = allLabels.indexOf(snapHH + ':' + snapMM);
+            nowIdx = allLabels.indexOf(getKSTTimeLabel());
         }
 
         // 조위: area fill 그라디언트 (물 표현)
