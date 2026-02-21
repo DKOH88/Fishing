@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>물때 & 조류 정보</title>
+    <meta name="description" content="실시간 물때, 조위, 조류 유속, 날씨 정보를 제공하는 선상낚시 정보 웹앱">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://tide-api-proxy.odk297.workers.dev https://cdn.jsdelivr.net; img-src 'self' data:;">
     <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC" crossorigin="anonymous"></script>
@@ -316,11 +317,11 @@
         <div class="controls" style="margin-bottom:12px;">
             <div class="control-group" style="display:flex;gap:8px;flex-wrap:nowrap;align-items:flex-end;">
                 <div style="flex:1;min-width:0;">
-                    <label style="white-space:nowrap;">관측소(조위)<span class="region-badge" id="stationRegion" style="margin-left:2px;">인천/경기</span></label>
+                    <label for="stationSelect" style="white-space:nowrap;">관측소(조위)<span class="region-badge" id="stationRegion" style="margin-left:2px;">인천/경기</span></label>
                     <select id="stationSelect"></select>
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <label>조류 예보점<span class="region-badge" id="currentRegion" style="margin-left:2px;">인천/경기</span></label>
+                    <label for="currentSelect">조류 예보점<span class="region-badge" id="currentRegion" style="margin-left:2px;">인천/경기</span></label>
                     <select id="currentSelect"></select>
                 </div>
             </div>

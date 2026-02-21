@@ -1504,7 +1504,7 @@
             const { data, ts, ttl } = JSON.parse(raw);
             if (Date.now() - ts < ttl) return data;
             sessionStorage.removeItem(key);
-        } catch(e) { /* 캐시 손상 무시 */ }
+        } catch(e) { try { sessionStorage.removeItem(key); } catch(_) {} }
         return null;
     }
 
@@ -3875,7 +3875,6 @@
                     position: { x: 'end' },
                 };
             }
-            const nowSpeedY = speedValues[nowIdx] != null ? speedValues[nowIdx] : null;
         }
 
         // 범례에 예측 구간 표기 추가를 위한 플래그

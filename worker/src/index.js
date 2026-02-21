@@ -335,7 +335,7 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
 
     // KHOA 에러 체크: result.meta 없거나 data 없으면 에러
     if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400, request);
+      return jsonResponse({ error: 'KHOA API returned no data' }, 400, request);
     }
 
     // 캐싱
@@ -401,7 +401,7 @@ async function handleKhoaRequest(khoaEndpoint, url, env, ctx, request) {
     }
 
     if (!data.result || !data.result.data) {
-      return jsonResponse({ error: 'KHOA API returned no data', raw: data }, 400, request);
+      return jsonResponse({ error: 'KHOA API returned no data' }, 400, request);
     }
 
     // 캐싱 (영역 조류는 특정 시각 데이터 → 같은 TTL)
@@ -536,7 +536,7 @@ async function handleLunarRequest(url, env, ctx, request) {
   // 응답에서 음력 데이터 추출
   const item = data?.response?.body?.items?.item;
   if (!item) {
-    return jsonResponse({ error: 'No lunar data found', raw: data }, 400, request);
+    return jsonResponse({ error: 'No lunar data found' }, 400, request);
   }
 
   // 간결한 응답으로 가공
@@ -783,16 +783,17 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
 async function handleWeather(env, request, url, ctx) {
   const nx = url.searchParams.get('nx');
   const ny = url.searchParams.get('ny');
-  if (!nx || !ny) {
-    return jsonResponse({ error: 'nx, ny required' }, 400, request);
+  if (!nx || !ny || !/^\d{1,4}$/.test(nx) || !/^\d{1,4}$/.test(ny)) {
+    return jsonResponse({ error: 'nx, ny must be 1-4 digit numbers' }, 400, request);
   }
 
   // 캐시 확인 (1시간)
   const cache = caches.default;
   // 캐시 키에 baseHour 포함 → 매시간 자동 갱신
   const _nowForKey = new Date(Date.now() + 9 * 3600 * 1000);
+  const _dateKey = _nowForKey.toISOString().slice(0, 10).replace(/-/g, '');
   const _hhKey = _nowForKey.getUTCHours();
-  const cacheKey = new Request(`https://cache.internal/weather-v3-${nx}-${ny}-${_hhKey}`, { method: 'GET' });
+  const cacheKey = new Request(`https://cache.internal/weather-v4-${nx}-${ny}-${_dateKey}-${_hhKey}`, { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     const body = await cached.text();
