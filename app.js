@@ -1233,13 +1233,14 @@
                 ${(() => {
                     const w = window._weatherInfo;
                     if (!w) return '';
-                    const t = parseInt(w.tmp);
+                    const t = parseFloat(w.tmp);
+                    const tDisplay = isNaN(t) ? '--' : Math.round(t);
                     const tc = isNaN(t) ? 'mild' : t <= 0 ? 'freeze' : t <= 10 ? 'cold' : t <= 20 ? 'mild' : t <= 30 ? 'warm' : 'hot';
                     return `<div class="weather-widget wt-${tc}">
                         <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
                         <div class="weather-widget-text">
                             <span class="weather-widget-label">오늘의 날씨</span>
-                            <span class="weather-widget-temp">${w.tmp}°</span>
+                            <span class="weather-widget-temp">${tDisplay}°</span>
                         </div>
                     </div>`;
                 })()}

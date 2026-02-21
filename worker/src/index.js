@@ -789,7 +789,10 @@ async function handleWeather(env, request, url, ctx) {
 
   // 캐시 확인 (1시간)
   const cache = caches.default;
-  const cacheKey = new Request(`https://cache.internal/weather-${nx}-${ny}`, { method: 'GET' });
+  // 캐시 키에 baseHour 포함 → 매시간 자동 갱신
+  const _nowForKey = new Date(Date.now() + 9 * 3600 * 1000);
+  const _hhKey = _nowForKey.getUTCHours();
+  const cacheKey = new Request(`https://cache.internal/weather-v3-${nx}-${ny}-${_hhKey}`, { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     const body = await cached.text();
@@ -807,77 +810,86 @@ async function handleWeather(env, request, url, ctx) {
   // KST 현재 시각 기준 base_date, base_time 계산
   const now = new Date(Date.now() + 9 * 3600 * 1000); // UTC → KST
   const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const hhmm = now.getUTCHours() * 100 + now.getUTCMinutes(); // KST HH*100+MM
+  const hh = now.getUTCHours();
+  const mm = now.getUTCMinutes();
 
-  // 단기예보 base_time: 0200,0500,0800,1100,1400,1700,2000,2300
-  // API 제공은 base_time + ~10분, 여유 두고 45분 이후 사용
-  const BASE_TIMES = [200, 500, 800, 1100, 1400, 1700, 2000, 2300];
+  // 초단기실황 base_time: 매시 정각 (0000~2300), 발표 후 ~40분 소요
   let baseDate = yyyymmdd;
-  let baseTime = '2300';
-  let usePrevDay = true;
-
-  for (const bt of BASE_TIMES) {
-    if (hhmm >= bt + 45) {
-      baseTime = String(bt).padStart(4, '0');
-      usePrevDay = false;
+  let baseHour = hh;
+  if (mm < 40) {
+    baseHour = hh - 1;
+    if (baseHour < 0) {
+      baseHour = 23;
+      const yesterday = new Date(now.getTime() - 86400000);
+      baseDate = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
     }
   }
+  const baseTime = String(baseHour).padStart(2, '0') + '00';
 
-  if (usePrevDay) {
-    // 자정~02:44 → 전날 2300 사용
-    const yesterday = new Date(now.getTime() - 86400000);
-    baseDate = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
-    baseTime = '2300';
+  // 초단기예보 base_time (SKY용): HH30 형식
+  let fcstBaseDate = yyyymmdd;
+  let fcstBaseHour = hh;
+  if (mm < 45) {
+    fcstBaseHour = hh - 1;
+    if (fcstBaseHour < 0) {
+      fcstBaseHour = 23;
+      const yesterday = new Date(now.getTime() - 86400000);
+      fcstBaseDate = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
+    }
   }
+  const fcstBaseTime = String(fcstBaseHour).padStart(2, '0') + '30';
 
   try {
-    // data.go.kr 키는 특수문자 포함 가능 → 인코딩 없이 직접 삽입
-    const apiUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst`
+    // 1) 초단기실황 API (실측 기온 T1H, PTY)
+    const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
       + `?serviceKey=${apiKey}`
-      + `&numOfRows=300&pageNo=1&dataType=JSON`
+      + `&numOfRows=10&pageNo=1&dataType=JSON`
       + `&base_date=${baseDate}&base_time=${baseTime}`
       + `&nx=${nx}&ny=${ny}`;
 
-    const resp = await fetch(apiUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' }
-    });
-    if (!resp.ok) {
-      return jsonResponse({ error: `KMA API error: ${resp.status}` }, 502, request);
-    }
+    // 2) 초단기예보 API (SKY 하늘상태)
+    const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
+      + `?serviceKey=${apiKey}`
+      + `&numOfRows=60&pageNo=1&dataType=JSON`
+      + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}`
+      + `&nx=${nx}&ny=${ny}`;
 
-    const data = await resp.json();
-    const items = data?.response?.body?.items?.item;
-    if (!items || !Array.isArray(items)) {
-      return jsonResponse({ error: 'No forecast data', raw: data?.response?.header }, 502, request);
-    }
+    const [ncstResp, fcstResp] = await Promise.all([
+      fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } }),
+      fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } }),
+    ]);
 
-    // 현재 시각에 가장 가까운 예보 시각 찾기
-    const currentHour = String(Math.floor(hhmm / 100)).padStart(2, '0') + '00';
-    const targetFcstDate = yyyymmdd;
-
-    // 해당 시각의 SKY, PTY, TMP 추출
-    let sky = null, pty = null, tmp = null, fcstTime = null;
-    for (const item of items) {
-      if (item.fcstDate === targetFcstDate && item.fcstTime === currentHour) {
-        if (item.category === 'SKY') sky = item.fcstValue;
-        if (item.category === 'PTY') pty = item.fcstValue;
-        if (item.category === 'TMP') tmp = item.fcstValue;
-        fcstTime = item.fcstTime;
+    // 실황 데이터에서 T1H, PTY 추출
+    let tmp = null, pty = null, fcstTime = null;
+    if (ncstResp.ok) {
+      const ncstData = await ncstResp.json();
+      const ncstItems = ncstData?.response?.body?.items?.item;
+      if (ncstItems && Array.isArray(ncstItems)) {
+        for (const item of ncstItems) {
+          if (item.category === 'T1H') tmp = item.obsrValue;
+          if (item.category === 'PTY') pty = item.obsrValue;
+        }
+        fcstTime = baseTime;
       }
     }
 
-    // 현재 시각 데이터가 없으면 가장 가까운 미래 시각 사용
-    if (sky === null) {
-      const hours = [...new Set(items.filter(i => i.fcstDate === targetFcstDate).map(i => i.fcstTime))].sort();
-      const nearest = hours.find(h => h >= currentHour) || hours[0];
-      if (nearest) {
-        for (const item of items) {
-          if (item.fcstDate === targetFcstDate && item.fcstTime === nearest) {
-            if (item.category === 'SKY') sky = item.fcstValue;
-            if (item.category === 'PTY') pty = item.fcstValue;
-            if (item.category === 'TMP') tmp = item.fcstValue;
-            fcstTime = item.fcstTime;
+    // 예보 데이터에서 SKY 추출
+    let sky = null;
+    if (fcstResp.ok) {
+      const fcstData = await fcstResp.json();
+      const fcstItems = fcstData?.response?.body?.items?.item;
+      if (fcstItems && Array.isArray(fcstItems)) {
+        const targetHour = String(hh).padStart(2, '0') + '00';
+        for (const item of fcstItems) {
+          if (item.fcstTime === targetHour && item.category === 'SKY') {
+            sky = item.fcstValue;
+            break;
           }
+        }
+        // fallback: 첫 번째 SKY
+        if (sky === null) {
+          const first = fcstItems.find(i => i.category === 'SKY');
+          if (first) sky = first.fcstValue;
         }
       }
     }
@@ -890,9 +902,10 @@ async function handleWeather(env, request, url, ctx) {
     };
 
     const jsonBody = JSON.stringify(result);
+    // 캐시 30분 (초단기예보는 매시간 갱신)
     const cacheResp = new Response(jsonBody, {
       status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' },
     });
     ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));
 
