@@ -42,6 +42,7 @@
     let _weatherInfo = null;
     let _waterTempInfo = null;
     let _windInfo = null;
+    let _widgetPromises = [];   // 기온/수온/풍향 로딩 추적 (스피너 연동)
     let _dischargePrefetch = null;
     let _dischargeLoaded = false;
     let _dischargeData = null;
@@ -544,11 +545,9 @@
             document.getElementById('searchInput').dataset.prefilled = '1';
             document.getElementById('searchResults').classList.remove('show');
 
-            // 자동 조회
+            // 자동 조회 (기온/수온/풍향 프로미스를 저장하여 스피너 연동)
+            _widgetPromises = [loadWeather(), loadWaterTemp(), loadWind()];
             fetchAll();
-            loadWeather();
-            loadWaterTemp();
-            loadWind();
             return;
         }
 
@@ -944,9 +943,16 @@
             btn.disabled = true;
             btn.classList.add('is-spinning');
             try {
-                await Promise.all([fetchTideHighLow(), fetchCurrentData()]);
-                await fetchTidePrediction();
-                renderCombinedChart();
+                await Promise.allSettled([
+                    (async () => {
+                        await Promise.all([fetchTideHighLow(), fetchCurrentData()]);
+                        await fetchTidePrediction();
+                        renderCombinedChart();
+                    })(),
+                    loadWeather(),
+                    loadWaterTemp(),
+                    loadWind()
+                ]);
             } catch(e) { console.error('물때 새로고침 오류:', e); }
             btn.classList.remove('is-spinning');
             btn.disabled = false;
@@ -1869,14 +1875,14 @@
             if (myController !== _fetchAllController) return;
             if (chartLoadDone) setTideChartLoadStatus('done');
             _setNavLoading(false);
-            // 에러 시에도 물때 스피너 확실히 해제
-            if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
+            // 물때 스피너는 아래 Promise.allSettled에서 위젯 포함 해제
         }
 
-        // 물때 스피너: 고저조+유속 둘 다 완료 시 해제 (조위 그래프 무관)
-        Promise.allSettled([hlPromise, currentPromise]).then(() => {
+        // 물때 스피너: 고저조+유속+위젯(기온/수온/풍향) 모두 완료 시 해제
+        Promise.allSettled([hlPromise, currentPromise, ..._widgetPromises]).then(() => {
             if (myController !== _fetchAllController) return; // 대체된 호출이면 무시
             if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
+            _widgetPromises = []; // 초기화
         });
 
         // 유속이 차트보다 늦게 도착하면 차트에 유속 라인 추가
