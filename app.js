@@ -41,6 +41,7 @@
     let _selectedPort = null;
     let _weatherInfo = null;
     let _waterTempInfo = null;
+    let _windInfo = null;
     let _dischargePrefetch = null;
     let _dischargeLoaded = false;
     let _dischargeData = null;
@@ -401,6 +402,20 @@
         };
     }
 
+    // 풍향(도) → 방위 이름
+    function getWindDirectionName(deg) {
+        const dirs = ['북', '북북동', '북동', '동북동', '동', '동남동', '남동', '남남동', '남', '남남서', '남서', '서남서', '서', '서북서', '북서', '북북서'];
+        const idx = Math.round(deg / 22.5) % 16;
+        return dirs[idx];
+    }
+
+    // 풍향(도) → 화살표 (바람이 불어오는 방향)
+    function getWindArrow(deg) {
+        const arrows = ['↓', '↙', '↙', '←', '←', '↖', '↖', '↑', '↑', '↗', '↗', '→', '→', '↘', '↘', '↓'];
+        const idx = Math.round(deg / 22.5) % 16;
+        return arrows[idx];
+    }
+
     // SKY + PTY → SVG 아이콘 파일명 매핑
     function getWeatherIconFile(sky, pty, isNight) {
         // PTY(강수형태)가 우선
@@ -439,6 +454,8 @@
                 tmp: data.tmp || '--',
                 sky: data.sky,
                 pty: data.pty,
+                wsd: data.wsd || null,
+                vec: data.vec || null,
                 isNight
             };
             // 물때 카드가 이미 렌더된 상태라면 갱신
@@ -465,6 +482,23 @@
         } catch (e) {
             console.warn('[water-temp] load failed:', e);
             _waterTempInfo = null;
+        }
+    }
+
+    async function loadWind() {
+        const port = _selectedPort;
+        if (!port || !port.station) { _windInfo = null; return; }
+        try {
+            const resp = await fetch(`${API_BASE}/api/wind?obsCode=${port.station}`);
+            if (!resp.ok) throw new Error('API error');
+            const data = await resp.json();
+            _windInfo = data;
+            if (typeof renderMulddaeCardFromState === 'function') {
+                renderMulddaeCardFromState();
+            }
+        } catch (e) {
+            console.warn('[wind] load failed:', e);
+            _windInfo = null;
         }
     }
 
@@ -514,6 +548,7 @@
             fetchAll();
             loadWeather();
             loadWaterTemp();
+            loadWind();
             return;
         }
 
@@ -1362,17 +1397,39 @@
                     <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
-                <div class="mulddae-pct-wrap">
-                    <div class="mulddae-pct-head">
-                        <span class="mulddae-pct-label-inline">오늘의 유속 (05:00~18:00 기준)</span>
-                        <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
-                    </div>
-                    <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
-                </div>
-            </div>
-            <div class="mulddae-desc">${desc}</div>
-            <div class="fishing-weather-row">
-                ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : '<div></div>'}
+                <div class="mulddae-row1-widgets">
+                ${(() => {
+                    const w = _weatherInfo;
+                    if (!w) return '';
+                    const t = parseFloat(w.tmp);
+                    const tDisplay = isNaN(t) ? '--' : (Number.isInteger(t) ? t : t.toFixed(1));
+                    const tc = isNaN(t) ? 'mild' : t <= 0 ? 'freeze' : t <= 10 ? 'cold' : t <= 20 ? 'mild' : t <= 30 ? 'warm' : 'hot';
+                    return `<div class="weather-widget wt-${tc}">
+                        <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
+                        <div class="weather-widget-text">
+                            <span class="weather-widget-label">오늘의 날씨</span>
+                            <span class="weather-widget-temp">${tDisplay}°</span>
+                        </div>
+                    </div>`;
+                })()}
+                ${(() => {
+                    const wi = _windInfo;
+                    if (!wi || wi.wspd == null) return '';
+                    const spd = parseFloat(wi.wspd);
+                    if (isNaN(spd)) return '';
+                    const spdDisp = Number.isInteger(spd) ? spd : spd.toFixed(1);
+                    const deg = parseFloat(wi.wndrct);
+                    const dirName = !isNaN(deg) ? getWindDirectionName(deg) : '';
+                    const arrow = !isNaN(deg) ? getWindArrow(deg) : '';
+                    const cls = spd < 4 ? 'calm' : spd < 9 ? 'moderate' : 'strong';
+                    return `<div class="wind-widget wind-${cls}">
+                        <span class="wind-arrow">${arrow || '💨'}</span>
+                        <div class="wind-text">
+                            <span class="wind-label">${dirName ? dirName : '풍속'}</span>
+                            <span class="wind-value">${spdDisp}m/s</span>
+                        </div>
+                    </div>`;
+                })()}
                 ${(() => {
                     const wt = _waterTempInfo;
                     if (!wt || wt.wtem == null) return '';
@@ -1388,20 +1445,15 @@
                         </div>
                     </div>`;
                 })()}
-                ${(() => {
-                    const w = _weatherInfo;
-                    if (!w) return '';
-                    const t = parseFloat(w.tmp);
-                    const tDisplay = isNaN(t) ? '--' : (Number.isInteger(t) ? t : t.toFixed(1));
-                    const tc = isNaN(t) ? 'mild' : t <= 0 ? 'freeze' : t <= 10 ? 'cold' : t <= 20 ? 'mild' : t <= 30 ? 'warm' : 'hot';
-                    return `<div class="weather-widget wt-${tc}">
-                        <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
-                        <div class="weather-widget-text">
-                            <span class="weather-widget-label">오늘의 날씨</span>
-                            <span class="weather-widget-temp">${tDisplay}°</span>
-                        </div>
-                    </div>`;
-                })()}
+                </div>
+            </div>
+            <div class="mulddae-flow-row">
+                <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
+                <span class="mulddae-flow-desc">${desc}</span>
+                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
+            </div>
+            <div class="fishing-weather-row">
+                ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
             </div>
             <div class="mulddae-species">
                 ${(() => {

@@ -182,7 +182,12 @@
         .search-no-result { padding: 16px; text-align: center; color: var(--muted); font-size: 0.85em; }
         .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 1em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 2px; vertical-align: middle; }
         .mulddae-card { display: flex; flex-direction: column; gap: 8px; }
-        .mulddae-row1 { display: flex; align-items: center; gap: 10px; }
+        .mulddae-row1 { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .mulddae-row1-widgets { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
+        .mulddae-flow-row { display: flex; align-items: center; gap: 8px; }
+        .mulddae-flow-row .mulddae-pct-bar { flex: 1; min-width: 0; }
+        .mulddae-flow-row .mulddae-flow-desc { font-size: 0.78em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+        .mulddae-flow-row .mulddae-pct-value { font-weight: 700; font-size: 0.9em; flex-shrink: 0; }
         .mulddae-badge { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 12px; font-weight: 700; flex-shrink: 0; }
         .mulddae-badge .mulddae-emoji { font-size: 1.3em; line-height: 1; }
         .mulddae-badge .mulddae-moon { width: 1.86em; height: 1.86em; border-radius: 50%; flex-shrink: 0; object-fit: cover; }
@@ -283,6 +288,38 @@
         .wtemp-warm:hover { background: linear-gradient(135deg, rgba(255,110,100,0.25), rgba(230,80,70,0.15)); border-color: rgba(255,110,100,0.5); box-shadow: 0 3px 12px rgba(255,110,100,0.15); }
         .wtemp-warm .water-temp-label { color: rgba(255,150,140,0.7); }
         .wtemp-warm .water-temp-value { color: #ff8a80; text-shadow: 0 0 8px rgba(255,110,100,0.3); }
+
+        /* 풍향/풍속 위젯 */
+        .wind-widget {
+            display: inline-flex; align-items: center; gap: 4px;
+            border-radius: 16px; padding: 3px 10px 3px 7px;
+            font-size: 0.76em;
+            animation: weatherFadeIn 0.6s ease-out;
+            transition: all 0.3s ease;
+        }
+        .wind-widget:hover { transform: translateY(-1px); }
+        .wind-arrow { font-size: 1.1em; line-height: 1; }
+        .wind-text { display: flex; flex-direction: column; line-height: 1.15; }
+        .wind-label { font-size: 0.72em; letter-spacing: 0.3px; }
+        .wind-value { font-size: 1em; font-weight: 700; }
+
+        /* 풍속 < 4m/s — 약풍 (연초록) */
+        .wind-calm { background: linear-gradient(135deg, rgba(100,200,130,0.15), rgba(70,180,100,0.08)); border: 1px solid rgba(100,200,130,0.3); }
+        .wind-calm:hover { background: linear-gradient(135deg, rgba(100,200,130,0.25), rgba(70,180,100,0.15)); border-color: rgba(100,200,130,0.5); box-shadow: 0 3px 12px rgba(100,200,130,0.15); }
+        .wind-calm .wind-label { color: rgba(130,220,160,0.7); }
+        .wind-calm .wind-value { color: #7cd8a0; text-shadow: 0 0 8px rgba(100,200,130,0.3); }
+
+        /* 풍속 4~8m/s — 보통풍 (연노랑) */
+        .wind-moderate { background: linear-gradient(135deg, rgba(240,200,80,0.15), rgba(220,180,50,0.08)); border: 1px solid rgba(240,200,80,0.3); }
+        .wind-moderate:hover { background: linear-gradient(135deg, rgba(240,200,80,0.25), rgba(220,180,50,0.15)); border-color: rgba(240,200,80,0.5); box-shadow: 0 3px 12px rgba(240,200,80,0.15); }
+        .wind-moderate .wind-label { color: rgba(240,210,120,0.7); }
+        .wind-moderate .wind-value { color: #f0c850; text-shadow: 0 0 8px rgba(240,200,80,0.3); }
+
+        /* 풍속 9m/s 이상 — 강풍 (연빨강) */
+        .wind-strong { background: linear-gradient(135deg, rgba(255,110,100,0.15), rgba(230,80,70,0.08)); border: 1px solid rgba(255,110,100,0.3); }
+        .wind-strong:hover { background: linear-gradient(135deg, rgba(255,110,100,0.25), rgba(230,80,70,0.15)); border-color: rgba(255,110,100,0.5); box-shadow: 0 3px 12px rgba(255,110,100,0.15); }
+        .wind-strong .wind-label { color: rgba(255,150,140,0.7); }
+        .wind-strong .wind-value { color: #ff8a80; text-shadow: 0 0 8px rgba(255,110,100,0.3); }
 
         /* 방류 새 글 알림 뱃지 + 펄스 */
         .tab-btn .new-badge { display: none; background: var(--high); color: #fff; font-size: 0.65em; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 700; vertical-align: middle; }

@@ -932,6 +932,77 @@ async function handleWaterTemp(env, request, url, ctx) {
   }
 }
 
+// ==================== 풍향/풍속 (Wind) ====================
+async function fetchWindForDate(apiKey, obsCode, dateStr) {
+  const apiUrl = new URL('https://apis.data.go.kr/1192136/surveyWind/GetSurveyWindApiService');
+  apiUrl.searchParams.set('serviceKey', apiKey);
+  apiUrl.searchParams.set('type', 'json');
+  apiUrl.searchParams.set('obsCode', obsCode);
+  apiUrl.searchParams.set('reqDate', dateStr);
+  apiUrl.searchParams.set('min', '60');
+  apiUrl.searchParams.set('numOfRows', '300');
+  const resp = await fetch(apiUrl.toString());
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const code = data?.header?.resultCode;
+  if (code === '03' || !data?.body?.items?.item) return null;
+  const items = data.body.items.item;
+  return items[items.length - 1]; // 가장 최근 관측값
+}
+
+async function handleWind(env, request, url, ctx) {
+  const obsCode = url.searchParams.get('obsCode');
+  if (!obsCode || !/^[A-Za-z0-9_-]{2,20}$/.test(obsCode)) {
+    return jsonResponse({ error: 'Invalid obsCode' }, 400, request);
+  }
+
+  const kst = new Date(Date.now() + 9 * 3600000);
+  const today = kst.toISOString().slice(0, 10).replace(/-/g, '');
+
+  const hh = String(kst.getHours()).padStart(2, '0');
+  const cacheKey = new Request(`https://tide-cache.internal/wind-v1/${obsCode}/${today}/${hh}`);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return addCorsHeaders(cached, request);
+
+  const apiKey = env.DATA_GO_KR_API_KEY;
+  if (!apiKey) return jsonResponse({ error: 'Missing API key' }, 500, request);
+
+  try {
+    let latest = await fetchWindForDate(apiKey, obsCode, today);
+    if (!latest) {
+      const yesterday = new Date(kst.getTime() - 86400000);
+      const yStr = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
+      latest = await fetchWindForDate(apiKey, obsCode, yStr);
+    }
+
+    if (!latest) {
+      const nodata = jsonResponse({ wspd: null, wndrct: null, obsCode, message: 'NODATA' }, 200, request);
+      const nr = new Response(nodata.body, nodata);
+      nr.headers.set('Cache-Control', 'public, max-age=1800');
+      ctx.waitUntil(cache.put(cacheKey, nr.clone()));
+      return addCorsHeaders(nr, request);
+    }
+
+    const result = {
+      wspd: latest.wspd,
+      wndrct: latest.wndrct,
+      obsCode,
+      obsvtrNm: latest.obsvtrNm,
+      obsrvnDt: latest.obsrvnDt,
+      fetchedAt: kst.toISOString().replace('Z', '+09:00'),
+    };
+
+    const response = jsonResponse(result, 200, request);
+    const cr = new Response(response.body, response);
+    cr.headers.set('Cache-Control', 'public, max-age=3600');
+    ctx.waitUntil(cache.put(cacheKey, cr.clone()));
+    return addCorsHeaders(cr, request);
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500, request);
+  }
+}
+
 async function handleWeather(env, request, url, ctx) {
   const nx = url.searchParams.get('nx');
   const ny = url.searchParams.get('ny');
@@ -984,7 +1055,7 @@ async function handleWeather(env, request, url, ctx) {
 
   try {
     // ── 1) AWS 실관측 기온 (기상청 API허브) ──
-    let tmp = null, pty = null, fcstTime = null, awsStn = null;
+    let tmp = null, pty = null, wsd = null, vec = null, fcstTime = null, awsStn = null;
     if (apihubKey && lat && lon) {
       const fLat = parseFloat(lat), fLon = parseFloat(lon);
       if (!isNaN(fLat) && !isNaN(fLon)) {
@@ -1023,6 +1094,8 @@ async function handleWeather(env, request, url, ctx) {
             for (const item of ncstItems) {
               if (item.category === 'T1H') tmp = item.obsrValue;
               if (item.category === 'PTY') pty = item.obsrValue;
+              if (item.category === 'WSD') wsd = item.obsrValue;
+              if (item.category === 'VEC') vec = item.obsrValue;
             }
             fcstTime = baseTime;
           }
@@ -1047,6 +1120,8 @@ async function handleWeather(env, request, url, ctx) {
               if (item.category === 'SKY') sky = item.fcstValue;
               if (item.category === 'T1H' && tmp === null) tmp = item.fcstValue;
               if (item.category === 'PTY' && pty === null) pty = item.fcstValue;
+              if (item.category === 'WSD' && wsd === null) wsd = item.fcstValue;
+              if (item.category === 'VEC' && vec === null) vec = item.fcstValue;
             }
           }
           if (sky === null) {
@@ -1058,7 +1133,7 @@ async function handleWeather(env, request, url, ctx) {
     } catch (e) { /* 예보 실패 */ }
 
     const result = {
-      sky, pty, tmp, fcstTime,
+      sky, pty, tmp, wsd, vec, fcstTime,
       baseDate: yyyymmdd, baseTime: String(hh).padStart(2, '0') + '00',
       nx: parseInt(nx), ny: parseInt(ny),
       awsStn: awsStn || null,
@@ -1527,6 +1602,11 @@ export default {
     // 수온 API: GET /api/water-temp?obsCode=DT_0025
     if (url.pathname === '/api/water-temp') {
       return handleWaterTemp(env, request, url, ctx);
+    }
+
+    // 풍향/풍속 API: GET /api/wind?obsCode=DT_0025
+    if (url.pathname === '/api/wind') {
+      return handleWind(env, request, url, ctx);
     }
 
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
