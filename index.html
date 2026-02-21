@@ -136,8 +136,8 @@
         .sun-row .sun-time { color: #ffb74d; font-weight: 700; font-size: 1.15em; }
         .sun-row .sun-label { color: var(--muted); font-size: 0.85em; }
         footer { text-align: center; padding: 20px; color: var(--muted); font-size: 0.75em; }
-        .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-        .tab-btn { padding: 10px 20px; background: transparent; border: none; color: var(--muted); font-size: 0.9em; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; }
+        .tabs { display: flex; gap: clamp(1px, 0.3vw, 6px); margin-bottom: 16px; border-bottom: 1px solid var(--border); flex-wrap: nowrap; }
+        .tab-btn { padding: clamp(6px, 1.5vw, 10px) clamp(1px, 0.8vw, 12px); background: transparent; border: none; color: var(--muted); font-size: clamp(0.75em, 2.2vw, 0.95em); cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; }
         .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
         .tab-btn:hover { color: var(--text); }
         .tab-content { display: none; }
@@ -200,7 +200,10 @@
         .mulddae-pct-bar { display: block; width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
         .mulddae-pct-bar-fill { height: 100%; border-radius: 4px; }
         .mulddae-desc { font-size: 0.85em; color: var(--muted); }
-        .fishing-weather-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
+        .mulddae-flow-title { font-size: 0.76em; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+        .fishing-weather-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
+        .fishing-weather-row .mulddae-flow-desc { font-size: 0.76em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .fishing-weather-row .mulddae-pct-value { font-weight: 700; font-size: 0.88em; flex-shrink: 0; }
         .fishing-index-wrap { font-size: 0.76em; position: relative; display: inline-block; }
         .fishing-index-btn { color: #8fc4ff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); border-radius: 16px; padding: 3px 10px; font-size: 0.88em; transition: all 0.2s; }
         .fishing-index-btn:hover { color: #b8daff; background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.5); }
@@ -348,8 +351,8 @@
         .legend-line { width: 16px; height: 3px; border-radius: 2px; flex-shrink: 0; }
         .legend-line-lg { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
         .legend-line-xl { width: 20px; height: 3px; border-radius: 2px; }
-        .nav-btn-sm { padding: 0 10px; font-size: 0.9em; min-width: 0; height: 36px; }
-        .nav-label { font-size: 0.85em; color: var(--muted); }
+        .nav-btn-sm { padding: 0 clamp(6px, 1.5vw, 14px); font-size: clamp(0.78em, 2.2vw, 0.95em); min-width: 0; height: clamp(30px, 8vw, 40px); }
+        .nav-label { font-size: clamp(0.78em, 2vw, 0.9em); color: var(--muted); }
         .nav-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
         .species-btn { padding: 4px 12px; border-radius: 16px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 0.78em; cursor: pointer; transition: all 0.2s; }
         .current-info-header { margin-bottom: 10px; font-size: 0.82em; color: var(--muted); }
@@ -451,9 +454,9 @@
                     </div>
                     <div class="nav-col" style="flex:1;min-width:0;">
                         <span class="nav-label">날짜</span>
-                        <div style="position:relative;width:100%;height:36px;">
+                        <div style="position:relative;width:100%;height:clamp(30px, 8vw, 40px);">
                             <input type="date" id="dateInput" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;" />
-                            <div id="dateDisplay" style="width:100%;height:36px;line-height:36px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1em;text-align:center;cursor:pointer;position:relative;z-index:1;box-sizing:border-box;">2026년 02월 15일</div>
+                            <div id="dateDisplay" style="width:100%;height:clamp(30px, 8vw, 40px);line-height:clamp(30px, 8vw, 40px);background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:clamp(0.78em, 2.2vw, 1em);text-align:center;cursor:pointer;position:relative;z-index:1;box-sizing:border-box;white-space:nowrap;">2026년 02월 15일</div>
                         </div>
                     </div>
                     <div class="nav-col">

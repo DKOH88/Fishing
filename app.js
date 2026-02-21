@@ -1407,7 +1407,7 @@
                     return `<div class="weather-widget wt-${tc}">
                         <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
                         <div class="weather-widget-text">
-                            <span class="weather-widget-label">오늘의 날씨</span>
+                            <span class="weather-widget-label">기온</span>
                             <span class="weather-widget-temp">${tDisplay}°</span>
                         </div>
                     </div>`;
@@ -1449,10 +1449,11 @@
             </div>
             <div class="mulddae-flow-row">
                 <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
-                <span class="mulddae-flow-desc">${desc}</span>
-                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
             </div>
             <div class="fishing-weather-row">
+                <span class="mulddae-flow-title">오늘의 유속</span>
+                <span class="mulddae-flow-desc">${desc}</span>
+                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
                 ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
             </div>
             <div class="mulddae-species">
