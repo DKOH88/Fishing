@@ -24,6 +24,9 @@
     let currentViewState = { items: [], el: null, fldEbbSummary: null, areaSummary: null };
     const CMPS_PER_KNOT = 51.444444;
 
+    // #18+#19: fetchAll 중복 호출/타임아웃 시 in-flight 요청 취소용
+    let _fetchAllController = null;
+
     // ==================== 지역 데이터 (관측소 + 조류 예보점 통합) ====================
     const REGIONS = [
         {
@@ -1254,8 +1257,19 @@
     window._lastMulddaePct = null;
     window._fishingIndexInfo = null;
 
-
+    // #17: rAF debounce — 같은 프레임 내 다중 호출을 1회로 통합
+    let _mulddaeRenderPending = false;
     function renderMulddaeCardFromState() {
+        if (!mulddaeCardState) return;
+        if (_mulddaeRenderPending) return;
+        _mulddaeRenderPending = true;
+        requestAnimationFrame(() => {
+            _mulddaeRenderPending = false;
+            _doRenderMulddaeCard();
+        });
+    }
+
+    function _doRenderMulddaeCard() {
         if (!mulddaeCardState) return;
         const mulddaeCard = document.getElementById('mulddaeCard');
         const mulddaeEl = document.getElementById('mulddaeInfo');
@@ -1533,12 +1547,24 @@
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        // fetchAll 취소 시 이 요청도 함께 abort (#18+#19)
+        let onParentAbort;
+        if (_fetchAllController) {
+            if (_fetchAllController.signal.aborted) { clearTimeout(timeoutId); throw new DOMException('Aborted', 'AbortError'); }
+            onParentAbort = () => controller.abort();
+            _fetchAllController.signal.addEventListener('abort', onParentAbort, { once: true });
+        }
+
         let resp;
         try {
             resp = await fetch(url.toString(), {
                 signal: controller.signal,
             });
-        } finally { clearTimeout(timeoutId); }
+        } finally {
+            clearTimeout(timeoutId);
+            if (onParentAbort && _fetchAllController) _fetchAllController.signal.removeEventListener('abort', onParentAbort);
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const ct = resp.headers.get('content-type') || '';
         if (!ct.includes('json')) throw new Error('잘못된 응답 형식');
@@ -1571,12 +1597,24 @@
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+        // fetchAll 취소 시 이 요청도 함께 abort (#18+#19)
+        let onParentAbort;
+        if (_fetchAllController) {
+            if (_fetchAllController.signal.aborted) { clearTimeout(timeoutId); throw new DOMException('Aborted', 'AbortError'); }
+            onParentAbort = () => controller.abort();
+            _fetchAllController.signal.addEventListener('abort', onParentAbort, { once: true });
+        }
+
         let resp;
         try {
             resp = await fetch(url.toString(), {
                 signal: controller.signal,
             });
-        } finally { clearTimeout(timeoutId); }
+        } finally {
+            clearTimeout(timeoutId);
+            if (onParentAbort && _fetchAllController) _fetchAllController.signal.removeEventListener('abort', onParentAbort);
+        }
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const ct = resp.headers.get('content-type') || '';
         if (!ct.includes('json')) throw new Error('잘못된 응답 형식');
@@ -1615,6 +1653,11 @@
     }
 
     async function fetchAll() {
+        // #18+#19: 이전 fetchAll 진행 중이면 취소 (날짜 빠른 변경 시 중복 방지)
+        if (_fetchAllController) _fetchAllController.abort();
+        _fetchAllController = new AbortController();
+        const myController = _fetchAllController;
+
         _setNavLoading(true);
         let chartLoadDone = false;
         setTideChartLoadStatus('loading');
@@ -1628,14 +1671,24 @@
 
         // batch API + 유속: 동시 시작
         const batchPromise = fetchBatchTide(stationCode, dateStr);
-        const currentPromise = fetchCurrentData().catch(e => console.warn('[fetchAll] 유속 로딩 실패:', e));
+        const currentPromise = fetchCurrentData().catch(e => {
+            if (e && e.name === 'AbortError') return; // 취소된 요청은 무시
+            console.warn('[fetchAll] 유속 로딩 실패:', e);
+        });
 
         // 고저조 + 유속: 동시 시작 (batch 실패 시 개별 호출용 프리페치도 준비)
         let hlPromise;
         let predictionAPIs;
 
         try {
-            const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
+            const timeout = new Promise((_, reject) => {
+                const tid = setTimeout(() => {
+                    myController.abort();  // #18: 타임아웃 시 실제 in-flight 요청도 취소
+                    reject(new Error('요청 시간 초과'));
+                }, 30000);
+                // 새 fetchAll 호출로 abort된 경우 타이머 정리
+                myController.signal.addEventListener('abort', () => clearTimeout(tid), { once: true });
+            });
             await Promise.race([
                 (async () => {
                     const batchResult = await batchPromise;
@@ -1687,6 +1740,10 @@
             ]);
             chartLoadDone = true;
         } catch(e) {
+            // #19: 새 fetchAll에 의해 대체된 경우 조용히 종료
+            if (myController !== _fetchAllController) return;
+            if (e && e.name === 'AbortError') return;
+
             console.error(e);
             if (e.message === '요청 시간 초과') {
                 const summaryEl = document.getElementById('tideSummary');
@@ -1695,6 +1752,8 @@
             setTideChartLoadStatus('error');
         }
         finally {
+            // 대체된 호출이면 UI 정리 스킵
+            if (myController !== _fetchAllController) return;
             if (chartLoadDone) setTideChartLoadStatus('done');
             _setNavLoading(false);
             // 에러 시에도 물때 스피너 확실히 해제
@@ -1703,11 +1762,13 @@
 
         // 물때 스피너: 고저조+유속 둘 다 완료 시 해제 (조위 그래프 무관)
         Promise.allSettled([hlPromise, currentPromise]).then(() => {
+            if (myController !== _fetchAllController) return; // 대체된 호출이면 무시
             if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
         });
 
         // 유속이 차트보다 늦게 도착하면 차트에 유속 라인 추가
         currentPromise.then(() => {
+            if (myController !== _fetchAllController) return; // 대체된 호출이면 무시
             if (chartLoadDone) renderCombinedChart();
         });
     }
