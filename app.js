@@ -697,12 +697,12 @@
                     const rowClass = (isMatch ? ' discharge-highlight' : '') + (isNew ? ' is-new-post' : '');
                     const hasContent = n.content && n.content.trim();
                     html += `<tr class="discharge-row${rowClass}" data-idx="${i}">`;
-                    html += `<td><span class="discharge-title" data-idx="${i}"><span class="arrow">▶</span>${n.title}</span></td>`;
-                    html += `<td>${n.date}</td>`;
+                    html += `<td><span class="discharge-title" data-idx="${i}"><span class="arrow">▶</span>${escapeHTML(n.title)}</span></td>`;
+                    html += `<td>${escapeHTML(n.date)}</td>`;
                     html += '</tr>';
                     if (hasContent) {
                         html += `<tr class="discharge-content-row" id="discharge-content-${i}">`;
-                        html += `<td colspan="2" class="discharge-content">${n.content.replace(/\n\n+/g, '<br><br>').replace(/\n/g, ' ')}</td>`;
+                        html += `<td colspan="2" class="discharge-content">${escapeHTML(n.content).replace(/\n\n+/g, '<br><br>').replace(/\n/g, ' ')}</td>`;
                         html += '</tr>';
                     }
                 }
@@ -791,7 +791,7 @@
                 if (existing) { existing.remove(); return; }
                 const popup = document.createElement('div');
                 popup.className = 'fishing-popup';
-                popup.innerHTML = fishBtn.dataset.popup.replace(/\n/g, '<br>');
+                popup.innerHTML = escapeHTML(fishBtn.dataset.popup).replace(/\n/g, '<br>');
                 fishBtn.parentElement.appendChild(popup);
                 return;
             }
@@ -1749,8 +1749,8 @@
             const minLow = lows.length > 0 ? Math.min(...lows.map(l => parseFloat(l.predcTdlvVl))) : null;
             const diff = (maxHigh !== null && minLow !== null) ? maxHigh - minLow : null;
 
-            const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
-            const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
+            const bestHigh = highs.length > 0 ? highs.reduce((a, b) => parseFloat(a.predcTdlvVl) > parseFloat(b.predcTdlvVl) ? a : b) : null;
+            const bestLow = lows.length > 0 ? lows.reduce((a, b) => parseFloat(a.predcTdlvVl) < parseFloat(b.predcTdlvVl) ? a : b) : null;
 
             // 물때 카드: 고정 MIN/MAX로 즉시 렌더 (fallback)
             const rangePct = calcRangeFlowPct(diff, stationCode);
@@ -1825,7 +1825,7 @@
         const points = hlData.map(item => {
             const time = item.predcDt.substring(11, 16);
             const [h, m] = time.split(':').map(Number);
-            return { min: h * 60 + m, val: item.predcTdlvVl };
+            return { min: h * 60 + m, val: parseFloat(item.predcTdlvVl) };
         }).sort((a, b) => a.min - b.min);
 
         // 10분 간격으로 00:00~23:50 라벨 생성
@@ -2496,24 +2496,25 @@
                 });
                 if (nearIdx < 0) return;
                 const isHigh = parseInt(item.extrSe) % 2 === 1;
+                const tdlvVal = parseFloat(item.predcTdlvVl);
 
                 annotations['hl_' + idx] = {
-                    type: 'point', xValue: nearIdx, yValue: item.predcTdlvVl,
+                    type: 'point', xValue: nearIdx, yValue: tdlvVal,
                     backgroundColor: isHigh ? 'rgba(255,107,107,0.8)' : 'rgba(78,205,196,0.8)',
                     radius: 7, borderColor: '#fff', borderWidth: 2,
                 };
                 annotations['hl_label_' + idx] = {
                     type: 'label', xValue: nearIdx,
-                    yValue: item.predcTdlvVl,
+                    yValue: tdlvVal,
                     yAdjust: isHigh ? 24 : -24,
-                    content: `${isHigh ? '고조' : '저조'} ${item.predcTdlvVl.toFixed(0)}cm`,
+                    content: `${isHigh ? '고조' : '저조'} ${tdlvVal.toFixed(0)}cm`,
                     color: isHigh ? '#ff6b6b' : '#4ecdc4',
                     font: { size: 11, weight: 'bold' },
                     z: 10,
                 };
                 annotations['hl_time_' + idx] = {
                     type: 'label', xValue: nearIdx,
-                    yValue: isHigh ? item.predcTdlvVl : _lowTimeLabelBase,
+                    yValue: isHigh ? tdlvVal : _lowTimeLabelBase,
                     yAdjust: isHigh ? -16 : _lowTimeLabelAdjust,
                     content: time,
                     color: isHigh ? '#ff6b6b' : '#4ecdc4',
@@ -2670,6 +2671,7 @@
     function getSpeciesByMulddae(mulddaeNum, mulddaePct, diff) {
         return Object.entries(SPECIES_RULES).map(([key, sp]) => {
             const suit = getSpeciesSuitability(key, mulddaePct, mulddaeNum, diff);
+            if (!suit) return { emoji: sp.emoji, name: sp.name, grade: '-', color: 'var(--muted)', desc: '', mulddaeDesc: '' };
             return { emoji: sp.emoji, name: sp.name, ...suit };
         });
     }
@@ -2856,6 +2858,7 @@
         const tips = speciesTips[activeSpecies];
         if (!tips) { infoEl.style.display = 'none'; return; }
         const suit = getSpeciesSuitability(activeSpecies, mulddae.pct, mulddae.num);
+        if (!suit) { infoEl.style.display = 'none'; return; }
 
         infoEl.style.display = '';
         infoEl.innerHTML = `

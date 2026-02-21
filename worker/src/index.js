@@ -148,7 +148,7 @@ function computeCacheTTL(endpoint, reqDate) {
 }
 
 const PASSTHROUGH_QUERY_KEYS = new Set([
-  'numOfRows', 'pageNo', 'min', 'hour', 'minute', 'placeName', 'gubun', 'include', 'exclude', 'lat', 'lot'
+  'numOfRows', 'pageNo', 'min', 'hour', 'minute', 'placeName', 'gubun', 'include', 'exclude', 'lat', 'lon'
 ]);
 
 function extractPassthroughParams(url) {
