@@ -793,14 +793,183 @@
     }
 
 
-    // 조차 기반 유속 퍼센트 계산 — MIN/MAX 정규화
-    function calcRangeFlowPct(diff, stationCode) {
+    // ==================== 동적 조차 범위 (±15일 윈도우) ====================
+    const TIDAL_DIFFS_CACHE_PREFIX = 'tidalDiffs:';
+    const TIDAL_DIFFS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
+
+    function getCachedTidalDiffs(stationCode, dateStr) {
+        try {
+            const monthKey = dateStr.substring(0, 6);
+            const raw = localStorage.getItem(`${TIDAL_DIFFS_CACHE_PREFIX}${stationCode}:${monthKey}`);
+            if (!raw) return null;
+            const cached = JSON.parse(raw);
+            if (Date.now() - cached.ts > TIDAL_DIFFS_CACHE_TTL) return null;
+            return cached.data;
+        } catch { return null; }
+    }
+
+    function setCachedTidalDiffs(stationCode, dateStr, data) {
+        try {
+            const monthKey = dateStr.substring(0, 6);
+            localStorage.setItem(
+                `${TIDAL_DIFFS_CACHE_PREFIX}${stationCode}:${monthKey}`,
+                JSON.stringify({ ts: Date.now(), data })
+            );
+            // 오래된 캐시 정리 (최대 10개 유지)
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(TIDAL_DIFFS_CACHE_PREFIX)) keys.push(k);
+            }
+            if (keys.length > 10) {
+                const entries = keys.map(k => {
+                    try { return { k, ts: JSON.parse(localStorage.getItem(k)).ts }; }
+                    catch { return { k, ts: 0 }; }
+                }).sort((a, b) => a.ts - b.ts);
+                for (let i = 0; i < entries.length - 10; i++) localStorage.removeItem(entries[i].k);
+            }
+        } catch { /* localStorage 사용 불가 시 무시 */ }
+    }
+
+    async function fetchLunarMonthDiffs(stationCode, dateStr) {
+        const y = parseInt(dateStr.substring(0, 4));
+        const m = parseInt(dateStr.substring(4, 6)) - 1;
+        const d = parseInt(dateStr.substring(6, 8));
+        const center = new Date(y, m, d);
+        const start = new Date(center.getTime() - 15 * 86400000);
+
+        const startStr = [
+            start.getFullYear(),
+            String(start.getMonth() + 1).padStart(2, '0'),
+            String(start.getDate()).padStart(2, '0')
+        ].join('');
+
+        const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
+            obsCode: stationCode,
+            reqDate: startStr,
+            numOfRows: '140',
+            pageNo: '1'
+        });
+
+        if (!items || items.length === 0) return null;
+
+        // 날짜별 그룹핑 → 일별 고저차 계산
+        const byDate = {};
+        for (const item of items) {
+            if (!item.predcDt) continue;
+            const dk = item.predcDt.substring(0, 10).replace(/-/g, '');
+            if (!byDate[dk]) byDate[dk] = [];
+            byDate[dk].push(item);
+        }
+
+        const diffs = {};
+        for (const [dk, dayItems] of Object.entries(byDate)) {
+            const filtered = dayItems.filter(i => {
+                const t = (i.predcDt || '').substring(11, 16);
+                return t >= '05:00' && t <= '18:00';
+            });
+            const highs = filtered.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
+            const lows = filtered.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
+            if (highs.length > 0 && lows.length > 0) {
+                const maxH = Math.max(...highs.map(h => parseFloat(h.predcTdlvVl)));
+                const minL = Math.min(...lows.map(l => parseFloat(l.predcTdlvVl)));
+                if (maxH > minL) diffs[dk] = Math.round((maxH - minL) * 10) / 10;
+            }
+        }
+
+        const sortedEntries = Object.entries(diffs)
+            .map(([date, diff]) => ({ date, diff }))
+            .sort((a, b) => a.date.localeCompare(b.date));
+        if (sortedEntries.length < 3) return null;
+
+        // 전체 윈도우 MIN/MAX
+        const vals = sortedEntries.map(e => e.diff);
+        const windowRange = { min: Math.min(...vals), max: Math.max(...vals) };
+
+        return { diffs, windowRange, sortedEntries };
+    }
+
+    // 조차 기반 유속 퍼센트 계산 — 동적 윈도우 우선, 고정 테이블 fallback (2순위: crsp 없는 관측소용)
+    function calcRangeFlowPct(diff, stationCode, rangeData) {
         if (diff == null || diff <= 0) return null;
-        const maxRange = MAX_TIDAL_RANGE[stationCode] || 300;
-        const minRange = MIN_TIDAL_RANGE[stationCode] || Math.round(maxRange * 0.2);
+        let maxRange, minRange;
+        // 1순위: ±15일 윈도우 동적 범위
+        if (rangeData && rangeData.windowRange && rangeData.windowRange.max > rangeData.windowRange.min) {
+            maxRange = rangeData.windowRange.max;
+            minRange = rangeData.windowRange.min;
+        // 2순위: 고정 테이블
+        } else {
+            maxRange = MAX_TIDAL_RANGE[stationCode] || 300;
+            minRange = MIN_TIDAL_RANGE[stationCode] || Math.round(maxRange * 0.2);
+        }
         if (maxRange <= minRange) return null;
         const pct = ((diff - minRange) / (maxRange - minRange)) * 100;
         return Math.round(clamp(pct, 0, 100));
+    }
+
+    // ==================== 유속(crsp) 직접 정규화 ====================
+
+    const CRSP_WINDOW_CACHE_PREFIX = 'crspWindow:';
+    const CRSP_WINDOW_CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
+
+    function getCachedCrspWindow(currentStationCode, dateStr) {
+        try {
+            const monthKey = dateStr.substring(0, 6);
+            const raw = localStorage.getItem(`${CRSP_WINDOW_CACHE_PREFIX}${currentStationCode}:${monthKey}`);
+            if (!raw) return null;
+            const cached = JSON.parse(raw);
+            if (Date.now() - cached.ts > CRSP_WINDOW_CACHE_TTL) return null;
+            return cached.data;
+        } catch { return null; }
+    }
+
+    function setCachedCrspWindow(currentStationCode, dateStr, data) {
+        try {
+            const monthKey = dateStr.substring(0, 6);
+            localStorage.setItem(
+                `${CRSP_WINDOW_CACHE_PREFIX}${currentStationCode}:${monthKey}`,
+                JSON.stringify({ ts: Date.now(), data })
+            );
+            // 오래된 캐시 정리 (최대 10개 유지)
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (k && k.startsWith(CRSP_WINDOW_CACHE_PREFIX)) keys.push(k);
+            }
+            if (keys.length > 10) {
+                const entries = keys.map(k => {
+                    try { return { k, ts: JSON.parse(localStorage.getItem(k)).ts }; }
+                    catch { return { k, ts: 0 }; }
+                }).sort((a, b) => a.ts - b.ts);
+                for (let i = 0; i < entries.length - 10; i++) localStorage.removeItem(entries[i].k);
+            }
+        } catch { /* localStorage 사용 불가 시 무시 */ }
+    }
+
+    // 유속(crsp) 직접 정규화: 해당일 max crsp를 ±15일 윈도우 max crsp의 min/max로 정규화
+    function calcCrspFlowPct(todayMaxSpeed, windowMaxSpeeds) {
+        if (todayMaxSpeed == null || !windowMaxSpeeds || windowMaxSpeeds.length < 3) return null;
+        const wMin = Math.min(...windowMaxSpeeds);
+        const wMax = Math.max(...windowMaxSpeeds);
+        if (wMax <= wMin) return null;
+        const pct = ((todayMaxSpeed - wMin) / (wMax - wMin)) * 100;
+        return Math.round(clamp(pct, 0, 100));
+    }
+
+    // Worker /api/current-window 엔드포인트에서 ±15일 일별 max crsp 조회
+    async function fetchCrspWindow(currentStationCode, dateStr) {
+        const cached = getCachedCrspWindow(currentStationCode, dateStr);
+        if (cached) return cached;
+
+        const resp = await apiCallRaw('/api/current-window', {
+            obsCode: currentStationCode,
+            reqDate: dateStr
+        });
+        if (!resp || !resp.dailyMaxSpeeds || resp.dailyMaxSpeeds.length === 0) return null;
+
+        const result = resp.dailyMaxSpeeds; // [{date, maxCrsp}, ...]
+        setCachedCrspWindow(currentStationCode, dateStr, result);
+        return result;
     }
 
     function getMulddaeInfo(dateStr) {
@@ -1171,7 +1340,7 @@
             const bestHigh = highs.length > 0 ? highs.reduce((a, b) => a.predcTdlvVl > b.predcTdlvVl ? a : b) : null;
             const bestLow = lows.length > 0 ? lows.reduce((a, b) => a.predcTdlvVl < b.predcTdlvVl ? a : b) : null;
 
-            // 물때 카드: 조차(고저차) 기반 MIN/MAX 정규화 퍼센트
+            // 물때 카드: 고정 MIN/MAX로 즉시 렌더 (fallback)
             const rangePct = calcRangeFlowPct(diff, stationCode);
             mulddaeCardState = {
                 dateStr,
@@ -1181,6 +1350,27 @@
                 rangePct
             };
             renderMulddaeCardFromState();
+
+            // 백그라운드: ±15일 동적 MIN/MAX 로 재계산 (non-blocking)
+            (async () => {
+                try {
+                    let rangeData = getCachedTidalDiffs(stationCode, dateStr);
+                    if (!rangeData) {
+                        rangeData = await fetchLunarMonthDiffs(stationCode, dateStr);
+                        if (rangeData) setCachedTidalDiffs(stationCode, dateStr, rangeData);
+                    }
+                    if (rangeData && mulddaeCardState && mulddaeCardState.dateStr === dateStr && mulddaeCardState.stationCode === stationCode) {
+                        const dynamicPct = calcRangeFlowPct(diff, stationCode, rangeData);
+                        if (dynamicPct != null) {
+                            mulddaeCardState.rangePct = dynamicPct;
+                            renderMulddaeCardFromState();
+                        }
+                    }
+                } catch (e) {
+                    console.warn('동적 조차 범위 fetch 실패, 고정 MIN/MAX 유지:', e.message);
+                }
+            })();
+
             const fishingInfo = await fishingPromise;
             setTideDataStamp(buildTideDataStampText(items, dateStr));
             window._fishingIndexInfo = fishingInfo;
@@ -2809,6 +2999,28 @@
                 : timeFiltered.filter((_, idx) => idx % 10 === 0);
             renderCurrentViews(filtered, infoEl, fldEbbSummary, areaSummary);
             renderMulddaeCardFromState();
+
+            // 백그라운드: crsp 직접 정규화 (1순위 — 조차 기반보다 정확)
+            const crspSpeeds = timeFiltered.map(i => parseFloat(i.crsp) || 0).filter(s => s > 0);
+            const todayMaxCrsp = crspSpeeds.length > 0 ? Math.max(...crspSpeeds) : null;
+            if (todayMaxCrsp != null && cStation && mulddaeCardState) {
+                (async () => {
+                    try {
+                        const windowData = await fetchCrspWindow(cStation, dateStr);
+                        if (windowData && windowData.length >= 3) {
+                            const windowMaxSpeeds = windowData.map(d => d.maxCrsp);
+                            const crspPct = calcCrspFlowPct(todayMaxCrsp, windowMaxSpeeds);
+                            if (crspPct != null && mulddaeCardState && mulddaeCardState.dateStr === dateStr) {
+                                mulddaeCardState.rangePct = crspPct;
+                                renderMulddaeCardFromState();
+                                console.log(`[crsp 정규화] ${cStation} ${dateStr}: todayMax=${todayMaxCrsp.toFixed(1)}, window=[${Math.min(...windowMaxSpeeds).toFixed(1)}~${Math.max(...windowMaxSpeeds).toFixed(1)}], pct=${crspPct}%`);
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('crsp 윈도우 정규화 실패, 조차 기반 유지:', e.message);
+                    }
+                })();
+            }
         } catch(e) {
             infoEl.innerHTML = `<div class="error-msg">조류 오류: ${escapeHTML(e.message)}</div>`;
             renderCurrentViews([], infoEl);

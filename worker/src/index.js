@@ -808,6 +808,188 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
   return results;
 }
 
+// ==================== 유속 윈도우 (current-window) ====================
+
+async function handleCurrentWindowRequest(url, env, ctx, request) {
+  const obsCode = url.searchParams.get('obsCode');
+  const reqDate = url.searchParams.get('reqDate');
+
+  // 입력 검증
+  if (!obsCode || !/^[A-Za-z0-9_-]{2,20}$/.test(obsCode)) {
+    return jsonResponse({ error: 'Invalid obsCode' }, 400, request);
+  }
+  if (!reqDate || !/^\d{8}$/.test(reqDate)) {
+    return jsonResponse({ error: 'Invalid reqDate (expected YYYYMMDD)' }, 400, request);
+  }
+
+  // 캐시 확인
+  const cacheKey = buildCacheKey('current-window', obsCode, reqDate, 'default');
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const resp = addCorsHeaders(cached, request);
+    resp.headers.set('X-Cache', 'HIT');
+    return resp;
+  }
+
+  const apiKey = env.DATA_GO_KR_API_KEY;
+  if (!apiKey) {
+    return jsonResponse({ error: 'Server configuration error: API key not set' }, 500, request);
+  }
+
+  // 1단계: 첫 페이지 fetch → totalCount + 데이터 시작일 확인
+  const countUrl = buildUpstreamUrl('current-fld-ebb', obsCode, reqDate, apiKey, { numOfRows: '10', pageNo: '1' });
+  let countResp;
+  try {
+    countResp = await fetch(countUrl);
+  } catch (e) {
+    return jsonResponse({ error: 'Upstream fetch failed (count)', detail: e.message }, 502, request);
+  }
+  let countData;
+  try {
+    countData = await countResp.json();
+  } catch (e) {
+    return jsonResponse({ error: 'Failed to parse count response' }, 502, request);
+  }
+  const resultCode = extractApiLevelResultCode(countData);
+  if (resultCode && resultCode !== '00') {
+    return jsonResponse({ error: `API error: ${extractApiLevelResultMsg(countData)}`, resultCode }, 400, request);
+  }
+  const totalCount = countData?.body?.totalCount;
+  if (!totalCount || totalCount < 10) {
+    return jsonResponse({ error: 'No fldEbb data for this station' }, 400, request);
+  }
+
+  // 첫 페이지의 시작일 추출하여 정확한 itemsPerDay 계산
+  const firstItems = countData?.body?.items?.item;
+  const firstItemArr = Array.isArray(firstItems) ? firstItems : (firstItems ? [firstItems] : []);
+  let dataStartDate = null;
+  if (firstItemArr.length > 0 && firstItemArr[0].predcDt) {
+    const fd = firstItemArr[0].predcDt.substring(0, 10);
+    const [fy, fm, fdd] = fd.split('-').map(Number);
+    dataStartDate = new Date(fy, fm - 1, fdd);
+  }
+
+  // 2단계: pageNo 추정
+  const y = parseInt(reqDate.substring(0, 4));
+  const m = parseInt(reqDate.substring(4, 6)) - 1;
+  const d = parseInt(reqDate.substring(6, 8));
+  const targetDate = new Date(y, m, d);
+
+  // 데이터 시작일로부터의 일수로 정확한 itemsPerDay 계산
+  const startRef = dataStartDate || new Date(y, 0, 1);
+  const totalDays = Math.max(1, totalCount / 7.6); // 경험적 평균 7.6건/일
+  const daysSinceStart = Math.max(0, Math.floor((targetDate - startRef) / 86400000));
+
+  // 대상일 -20일 지점의 offset 추정 (여유 확보)
+  const targetDayOffset = Math.max(0, daysSinceStart - 20);
+  const itemOffset = Math.floor(targetDayOffset * (totalCount / totalDays));
+  let targetPage = Math.max(1, Math.floor(itemOffset / 300) + 1);
+
+  // 3단계: 데이터 fetch (최대 2회 시도)
+  let allItems = [];
+  const fetchPage = async (pageNo) => {
+    const pageUrl = buildUpstreamUrl('current-fld-ebb', obsCode, reqDate, apiKey, { numOfRows: '300', pageNo: String(pageNo) });
+    const resp = await fetch(pageUrl);
+    const data = await resp.json();
+    const rc = extractApiLevelResultCode(data);
+    if (rc && rc !== '00') return [];
+    const items = data?.body?.items?.item;
+    return Array.isArray(items) ? items : (items ? [items] : []);
+  };
+
+  try {
+    allItems = await fetchPage(targetPage);
+  } catch (e) {
+    return jsonResponse({ error: 'Upstream fetch failed', detail: e.message }, 502, request);
+  }
+
+  // 대상일이 결과에 있는지 확인
+  const targetDateStr = `${reqDate.substring(0, 4)}-${reqDate.substring(4, 6)}-${reqDate.substring(6, 8)}`;
+  const hasTarget = allItems.some(it => (it.predcDt || '').startsWith(targetDateStr));
+
+  if (!hasTarget && allItems.length > 0) {
+    // 결과의 마지막 날짜와 비교하여 방향 결정
+    const lastDate = allItems[allItems.length - 1]?.predcDt?.substring(0, 10) || '';
+    const firstDate = allItems[0]?.predcDt?.substring(0, 10) || '';
+    const adjustDir = targetDateStr > lastDate ? 1 : (targetDateStr < firstDate ? -1 : 0);
+    if (adjustDir !== 0) {
+      const nextPage = targetPage + adjustDir;
+      if (nextPage >= 1) {
+        try {
+          const extraItems = await fetchPage(nextPage);
+          allItems = allItems.concat(extraItems);
+        } catch (e) {
+          // 재시도 실패 — 기존 데이터로 진행
+        }
+      }
+    }
+  }
+
+  if (allItems.length === 0) {
+    return jsonResponse({ error: 'No data found for the requested date range' }, 400, request);
+  }
+
+  // 4단계: 일별 max crsp 추출 (05~18시, crsp > 0)
+  const byDate = {};
+  for (const item of allItems) {
+    if (!item.predcDt) continue;
+    const dateKey = item.predcDt.substring(0, 10).replace(/-/g, '');
+    const time = item.predcDt.substring(11, 16);
+    const crsp = parseFloat(item.crsp);
+    if (isNaN(crsp) || crsp <= 0) continue;
+    // 05~18시 필터
+    if (time < '05:00' || time > '18:00') continue;
+    if (!byDate[dateKey]) byDate[dateKey] = 0;
+    if (crsp > byDate[dateKey]) byDate[dateKey] = crsp;
+  }
+
+  // 05~18시에 데이터가 없는 날은 전체시간 fallback
+  for (const item of allItems) {
+    if (!item.predcDt) continue;
+    const dateKey = item.predcDt.substring(0, 10).replace(/-/g, '');
+    if (byDate[dateKey]) continue; // 이미 05~18시 데이터 있음
+    const crsp = parseFloat(item.crsp);
+    if (isNaN(crsp) || crsp <= 0) continue;
+    if (!byDate[dateKey]) byDate[dateKey] = 0;
+    if (crsp > byDate[dateKey]) byDate[dateKey] = crsp;
+  }
+
+  // 5단계: ±15일 범위 필터
+  const centerMs = targetDate.getTime();
+  const windowMs = 15 * 86400000;
+  const dailyMaxSpeeds = [];
+  for (const [dk, maxCrsp] of Object.entries(byDate)) {
+    const dy = parseInt(dk.substring(0, 4));
+    const dm = parseInt(dk.substring(4, 6)) - 1;
+    const dd = parseInt(dk.substring(6, 8));
+    const dMs = new Date(dy, dm, dd).getTime();
+    if (Math.abs(dMs - centerMs) <= windowMs) {
+      dailyMaxSpeeds.push({ date: dk, maxCrsp: Math.round(maxCrsp * 10) / 10 });
+    }
+  }
+  dailyMaxSpeeds.sort((a, b) => a.date.localeCompare(b.date));
+
+  // 6단계: 응답 + 캐싱 (빈 결과는 캐싱하지 않음)
+  const ttl = computeCacheTTL('current-fld-ebb', reqDate);
+  const responseBody = { dailyMaxSpeeds, obsCode, reqDate };
+  const response = new Response(JSON.stringify(responseBody), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': dailyMaxSpeeds.length > 0 ? `public, max-age=${ttl}` : 'no-store',
+      'X-Cache': 'MISS',
+      'X-Cache-TTL': `${ttl}s`,
+      ...getCorsHeaders(request),
+    },
+  });
+
+  if (dailyMaxSpeeds.length > 0) {
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  }
+  return response;
+}
+
 // ==================== Main Handler ====================
 
 export default {
@@ -912,6 +1094,12 @@ export default {
       return response;
     }
 
+    // 유속 윈도우 API: GET /api/current-window?obsCode=07DS02&reqDate=20251001
+    // crntFcstFldEbb 데이터에서 ±15일 일별 max crsp 반환
+    if (url.pathname === '/api/current-window') {
+      return handleCurrentWindowRequest(url, env, ctx, request);
+    }
+
     // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
     const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
     if (khoaMatch) {
@@ -926,6 +1114,7 @@ export default {
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
           '/api/tide-time', '/api/tidebed', '/api/current-fld-ebb',
+          '/api/current-window',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/lunar',
