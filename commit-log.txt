@@ -79,3 +79,5 @@
 ✅ [26-02-22┃00:30:00] 3a5df2e — LOW 이슈 일괄 개선: KHOA 중복 코드 통합, hashIP 1회 계산, fetchedAt KST, getNowKST 헬퍼, window._ 제거
 ✅ [26-02-22┃01:00:00] 45e2630 — KST 날짜 계산 리팩토링: Intl.DateTimeFormat 기반 getKSTDateStr/getKSTTimeLabel 헬퍼 + 5곳 중복 포맷팅 통합 (#4)
 ✅ [26-02-22┃08:30:00] 43671d7 — AWS 기온 직접 관측 전환 + 날씨 아이콘 한국어 SVG: Worker에 기상청 API허브 AWS 매분자료 연동, 최근접 관측소 매칭, 초단기실황 fallback
+✅ [26-02-22┃08:45:00] ab7e24a — 오천항 날씨 좌표를 오천면 대표좌표로 수정 + AWS 관측소 739개 전체 적용
+✅ [26-02-22┃09:00:00] {hash} — 전체 낚시포인트 기상청 동/면 대표좌표(wxLat/wxLon) 적용 + 영흥도 포인트 추가

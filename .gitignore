@@ -5,3 +5,9 @@ worker/.dev.vars
 .wrangler/
 tmp_*.json
 temp_*.json
+*.ps1
+aws_*.txt
+aws_*.js
+nul
+worker/nul
+기상청_*.pdf
