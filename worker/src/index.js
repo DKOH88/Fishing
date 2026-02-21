@@ -809,6 +809,133 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
   return results;
 }
 
+// ==================== 날씨 API (기상청 단기예보) ====================
+
+async function handleWeather(env, request, url, ctx) {
+  const nx = url.searchParams.get('nx');
+  const ny = url.searchParams.get('ny');
+  if (!nx || !ny) {
+    return jsonResponse({ error: 'nx, ny required' }, 400, request);
+  }
+
+  // 캐시 확인 (1시간)
+  const cache = caches.default;
+  const cacheKey = new Request(`https://cache.internal/weather-${nx}-${ny}`, { method: 'GET' });
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const body = await cached.text();
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
+    });
+  }
+
+  const apiKey = env.KMA_API_KEY || env.DATA_GO_KR_API_KEY;
+  if (!apiKey) {
+    return jsonResponse({ error: 'KMA_API_KEY not set' }, 500, request);
+  }
+
+  // KST 현재 시각 기준 base_date, base_time 계산
+  const now = new Date(Date.now() + 9 * 3600 * 1000); // UTC → KST
+  const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const hhmm = now.getUTCHours() * 100 + now.getUTCMinutes(); // KST HH*100+MM
+
+  // 단기예보 base_time: 0200,0500,0800,1100,1400,1700,2000,2300
+  // API 제공은 base_time + ~10분, 여유 두고 45분 이후 사용
+  const BASE_TIMES = [200, 500, 800, 1100, 1400, 1700, 2000, 2300];
+  let baseDate = yyyymmdd;
+  let baseTime = '2300';
+  let usePrevDay = true;
+
+  for (const bt of BASE_TIMES) {
+    if (hhmm >= bt + 45) {
+      baseTime = String(bt).padStart(4, '0');
+      usePrevDay = false;
+    }
+  }
+
+  if (usePrevDay) {
+    // 자정~02:44 → 전날 2300 사용
+    const yesterday = new Date(now.getTime() - 86400000);
+    baseDate = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
+    baseTime = '2300';
+  }
+
+  try {
+    // data.go.kr 키는 특수문자 포함 가능 → 인코딩 없이 직접 삽입
+    const apiUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst`
+      + `?serviceKey=${apiKey}`
+      + `&numOfRows=300&pageNo=1&dataType=JSON`
+      + `&base_date=${baseDate}&base_time=${baseTime}`
+      + `&nx=${nx}&ny=${ny}`;
+
+    const resp = await fetch(apiUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' }
+    });
+    if (!resp.ok) {
+      return jsonResponse({ error: `KMA API error: ${resp.status}` }, 502, request);
+    }
+
+    const data = await resp.json();
+    const items = data?.response?.body?.items?.item;
+    if (!items || !Array.isArray(items)) {
+      return jsonResponse({ error: 'No forecast data', raw: data?.response?.header }, 502, request);
+    }
+
+    // 현재 시각에 가장 가까운 예보 시각 찾기
+    const currentHour = String(Math.floor(hhmm / 100)).padStart(2, '0') + '00';
+    const targetFcstDate = yyyymmdd;
+
+    // 해당 시각의 SKY, PTY, TMP 추출
+    let sky = null, pty = null, tmp = null, fcstTime = null;
+    for (const item of items) {
+      if (item.fcstDate === targetFcstDate && item.fcstTime === currentHour) {
+        if (item.category === 'SKY') sky = item.fcstValue;
+        if (item.category === 'PTY') pty = item.fcstValue;
+        if (item.category === 'TMP') tmp = item.fcstValue;
+        fcstTime = item.fcstTime;
+      }
+    }
+
+    // 현재 시각 데이터가 없으면 가장 가까운 미래 시각 사용
+    if (sky === null) {
+      const hours = [...new Set(items.filter(i => i.fcstDate === targetFcstDate).map(i => i.fcstTime))].sort();
+      const nearest = hours.find(h => h >= currentHour) || hours[0];
+      if (nearest) {
+        for (const item of items) {
+          if (item.fcstDate === targetFcstDate && item.fcstTime === nearest) {
+            if (item.category === 'SKY') sky = item.fcstValue;
+            if (item.category === 'PTY') pty = item.fcstValue;
+            if (item.category === 'TMP') tmp = item.fcstValue;
+            fcstTime = item.fcstTime;
+          }
+        }
+      }
+    }
+
+    const result = {
+      sky, pty, tmp, fcstTime,
+      baseDate, baseTime,
+      nx: parseInt(nx), ny: parseInt(ny),
+      fetchedAt: new Date().toISOString(),
+    };
+
+    const jsonBody = JSON.stringify(result);
+    const cacheResp = new Response(jsonBody, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+    });
+    ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));
+
+    return new Response(jsonBody, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
+    });
+  } catch (err) {
+    return jsonResponse({ error: `Weather fetch failed: ${err.message}` }, 500, request);
+  }
+}
+
 // ==================== 방류/급수 알림 크롤링 (discharge-notice) ====================
 
 async function handleDischargeNotice(ctx, request) {
@@ -1224,6 +1351,11 @@ export default {
       return handleCurrentWindowRequest(url, env, ctx, request);
     }
 
+    // 날씨 API: GET /api/weather?nx=63&ny=89
+    if (url.pathname === '/api/weather') {
+      return handleWeather(env, request, url, ctx);
+    }
+
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
     if (url.pathname === '/api/discharge-notice') {
       return handleDischargeNotice(ctx, request);
@@ -1247,6 +1379,7 @@ export default {
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/discharge-notice',
+          '/api/weather',
           '/api/lunar',
           '/api/visitor'
         ]

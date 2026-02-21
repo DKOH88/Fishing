@@ -343,6 +343,75 @@
         });
     }
 
+    // ==================== 날씨 아이콘 (기상청 단기예보) ====================
+
+    // 위경도 → 기상청 격자좌표 변환 (Lambert Conformal Conic)
+    function latLonToGrid(lat, lon) {
+        const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0;
+        const OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
+        const DEGRAD = Math.PI / 180.0;
+        const re = RE / GRID;
+        const slat1 = SLAT1 * DEGRAD, slat2 = SLAT2 * DEGRAD;
+        const olon = OLON * DEGRAD, olat = OLAT * DEGRAD;
+        let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+        sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+        let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+        sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+        let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+        ro = re * sf / Math.pow(ro, sn);
+        let ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
+        ra = re * sf / Math.pow(ra, sn);
+        let theta = lon * DEGRAD - olon;
+        if (theta > Math.PI) theta -= 2.0 * Math.PI;
+        if (theta < -Math.PI) theta += 2.0 * Math.PI;
+        theta *= sn;
+        return {
+            nx: Math.floor(ra * Math.sin(theta) + XO + 0.5),
+            ny: Math.floor(ro - ra * Math.cos(theta) + YO + 0.5)
+        };
+    }
+
+    // SKY + PTY → SVG 아이콘 파일명 매핑
+    function getWeatherIconFile(sky, pty, isNight) {
+        // PTY(강수형태)가 우선
+        if (pty === '1') return 'ModerateRainV2.svg';                                    // 비
+        if (pty === '2') return 'RainSnowV2.svg';                                        // 비/눈
+        if (pty === '3') return 'LightSnowV2.svg';                                       // 눈
+        if (pty === '4') return isNight ? 'RainShowersNightV2.svg' : 'RainShowersDayV2.svg'; // 소나기
+        // SKY(하늘상태)
+        if (sky === '1') return isNight ? 'ClearNightV3.svg' : 'SunnyDayV3.svg';         // 맑음
+        if (sky === '3') return isNight ? 'PartlyCloudyNightV2.svg' : 'PartlyCloudyDayV3.svg'; // 구름많음
+        if (sky === '4') return 'CloudyV3.svg';                                          // 흐림
+        return isNight ? 'ClearNightV3.svg' : 'SunnyDayV3.svg';
+    }
+
+    async function loadWeather() {
+        const port = window._selectedPort;
+        if (!port) return;
+        const { nx, ny } = latLonToGrid(port.lat, port.lon);
+        const el = document.getElementById('weatherIcon');
+        if (!el) return;
+
+        try {
+            const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}`);
+            if (!resp.ok) throw new Error('API error');
+            const data = await resp.json();
+            if (!data.sky) { el.style.display = 'none'; return; }
+
+            // 주간/야간 판정 (06~18시 주간)
+            const hour = data.fcstTime ? parseInt(data.fcstTime.slice(0, 2)) : new Date().getHours();
+            const isNight = hour < 6 || hour >= 18;
+            const iconFile = getWeatherIconFile(data.sky, data.pty, isNight);
+
+            el.innerHTML = `<img src="moon/weather/${iconFile}" alt="날씨" style="width:28px;height:28px;vertical-align:middle;">`;
+            el.title = `${data.tmp || ''}°C`;
+            el.style.display = 'inline-flex';
+        } catch (e) {
+            console.warn('[weather] load failed:', e);
+            el.style.display = 'none';
+        }
+    }
+
     function selectSearchResult(item) {
         const stationSel = document.getElementById('stationSelect');
         const currentSel = document.getElementById('currentSelect');
@@ -387,6 +456,7 @@
 
             // 자동 조회
             fetchAll();
+            loadWeather();
             return;
         }
 

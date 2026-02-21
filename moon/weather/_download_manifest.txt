@@ -1,0 +1,43 @@
+﻿Source page: https://www.msn.com/ko-kr/weather/forecast/in-%EC%B6%A9%EC%B2%AD%EB%B6%81%EB%8F%84,%EC%B2%AD%EC%A3%BC%EC%8B%9C?loc=eyJsIjoi7LKt7KO87IucIiwiciI6Iuy2qeyyreu2geuPhCIsImMiOiLrjIDtlZzrr7zqta0iLCJpIjoiS1IiLCJnIjoia28ta3IiLCJ4IjoiMTI3LjUwMTE5NzgxNDk0MTQiLCJ5IjoiMzYuNjQzODk4MDEwMjUzOTA2In0%3D&weadegreetype=C&ocid=winp2fptaskbar&cvid=3e5ba927d61041ddcf15565b1fab3110&content=TeaserRainStatistics_wxnwtsstrs
+Experience bundle: https://assets.msn.com/bundles/v1/weather/latest/experience.9475c846af68ffe14db0.js
+Condition_Card base: https://assets.msn.com/weathermapdata/1/static/weather/Icons/taskbar_v10/Condition_Card
+Candidate icon keys: 516
+Condition_Card downloaded: 33
+Direct SVG saved: 1
+Total SVG files in folder: 33
+Generated UTC: 2026-02-21 06:10:20Z
+
+Downloaded files:
+BlowingHailV2.svg
+BlowingSnowV2.svg
+ClearNightV3.svg
+CloudyV3.svg
+FogV2.svg
+FreezingRainV2.svg
+HailDayV2.svg
+HailNightV2.svg
+HazeSmokeNightV2_106.svg
+HazySmokeV2.svg
+HeavySnowV2.svg
+LightRainShowerDay.svg
+LightRainShowerNight.svg
+LightRainV2.svg
+LightRainV3.svg
+LightSnowV2.svg
+ModerateRainV2.svg
+MostlyClearNight.svg
+MostlyCloudyDayV2.svg
+MostlyCloudyNightV2.svg
+MostlySunnyDay.svg
+PartlyCloudyDayV3.svg
+PartlyCloudyNightV2.svg
+RainShowersDayV2.svg
+RainShowersNightV2.svg
+RainSnowShowersNightV2.svg
+RainSnowV2.svg
+SnowShowersDayV2.svg
+SnowShowersNightV2.svg
+SunnyDayV3.svg
+Thunderstorms.svg
+ThunderstormsV2.svg
+WindyV2.svg
