@@ -40,6 +40,7 @@
     // ==================== 앱 상태 변수 (window.* → 모듈 스코프) ====================
     let _selectedPort = null;
     let _weatherInfo = null;
+    let _waterTempInfo = null;
     let _dischargePrefetch = null;
     let _dischargeLoaded = false;
     let _dischargeData = null;
@@ -450,6 +451,23 @@
         }
     }
 
+    async function loadWaterTemp() {
+        const port = _selectedPort;
+        if (!port || !port.station) { _waterTempInfo = null; return; }
+        try {
+            const resp = await fetch(`${API_BASE}/api/water-temp?obsCode=${port.station}`);
+            if (!resp.ok) throw new Error('API error');
+            const data = await resp.json();
+            _waterTempInfo = data;
+            if (typeof renderMulddaeCardFromState === 'function') {
+                renderMulddaeCardFromState();
+            }
+        } catch (e) {
+            console.warn('[water-temp] load failed:', e);
+            _waterTempInfo = null;
+        }
+    }
+
     function selectSearchResult(item) {
         const stationSel = document.getElementById('stationSelect');
         const currentSel = document.getElementById('currentSelect');
@@ -495,6 +513,7 @@
             // 자동 조회
             fetchAll();
             loadWeather();
+            loadWaterTemp();
             return;
         }
 
@@ -1354,6 +1373,21 @@
             <div class="mulddae-desc">${desc}</div>
             <div class="fishing-weather-row">
                 ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : '<div></div>'}
+                ${(() => {
+                    const wt = _waterTempInfo;
+                    if (!wt || wt.wtem == null) return '';
+                    const t = parseFloat(wt.wtem);
+                    if (isNaN(t)) return '';
+                    const tDisp = Number.isInteger(t) ? t : t.toFixed(1);
+                    const cls = t <= 5 ? 'icy' : t <= 14 ? 'cool' : t <= 22 ? 'nice' : 'warm';
+                    return `<div class="water-temp-widget wtemp-${cls}">
+                        <span class="water-temp-icon">🌊</span>
+                        <div class="water-temp-text">
+                            <span class="water-temp-label">수온</span>
+                            <span class="water-temp-value">${tDisp}℃</span>
+                        </div>
+                    </div>`;
+                })()}
                 ${(() => {
                     const w = _weatherInfo;
                     if (!w) return '';

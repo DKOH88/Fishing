@@ -252,6 +252,44 @@
         @keyframes weatherFadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes weatherIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 
+        /* 수온 위젯 */
+        .water-temp-widget {
+            display: inline-flex; align-items: center; gap: 4px;
+            border-radius: 16px; padding: 3px 10px 3px 7px;
+            font-size: 0.76em;
+            animation: weatherFadeIn 0.6s ease-out;
+            transition: all 0.3s ease;
+        }
+        .water-temp-widget:hover { transform: translateY(-1px); }
+        .water-temp-icon { font-size: 1.1em; line-height: 1; }
+        .water-temp-text { display: flex; flex-direction: column; line-height: 1.15; }
+        .water-temp-label { font-size: 0.72em; letter-spacing: 0.3px; }
+        .water-temp-value { font-size: 1em; font-weight: 700; }
+
+        /* 수온 5℃ 이하 — 진한 파랑 */
+        .wtemp-icy { background: linear-gradient(135deg, rgba(80,130,240,0.15), rgba(40,100,210,0.08)); border: 1px solid rgba(80,130,240,0.3); }
+        .wtemp-icy:hover { background: linear-gradient(135deg, rgba(80,130,240,0.25), rgba(40,100,210,0.15)); border-color: rgba(80,130,240,0.5); box-shadow: 0 3px 12px rgba(80,130,240,0.15); }
+        .wtemp-icy .water-temp-label { color: rgba(130,170,255,0.7); }
+        .wtemp-icy .water-temp-value { color: #8cb0ff; text-shadow: 0 0 8px rgba(80,130,240,0.3); }
+
+        /* 수온 6~14℃ — 하늘/시안 */
+        .wtemp-cool { background: linear-gradient(135deg, rgba(50,190,220,0.15), rgba(30,160,200,0.08)); border: 1px solid rgba(50,190,220,0.3); }
+        .wtemp-cool:hover { background: linear-gradient(135deg, rgba(50,190,220,0.25), rgba(30,160,200,0.15)); border-color: rgba(50,190,220,0.5); box-shadow: 0 3px 12px rgba(50,190,220,0.15); }
+        .wtemp-cool .water-temp-label { color: rgba(110,210,230,0.7); }
+        .wtemp-cool .water-temp-value { color: #6cd8e8; text-shadow: 0 0 8px rgba(50,190,220,0.3); }
+
+        /* 수온 15~22℃ — 초록/민트 */
+        .wtemp-nice { background: linear-gradient(135deg, rgba(60,200,130,0.15), rgba(40,180,100,0.08)); border: 1px solid rgba(60,200,130,0.3); }
+        .wtemp-nice:hover { background: linear-gradient(135deg, rgba(60,200,130,0.25), rgba(40,180,100,0.15)); border-color: rgba(60,200,130,0.5); box-shadow: 0 3px 12px rgba(60,200,130,0.15); }
+        .wtemp-nice .water-temp-label { color: rgba(120,220,160,0.7); }
+        .wtemp-nice .water-temp-value { color: #60d89a; text-shadow: 0 0 8px rgba(60,200,130,0.3); }
+
+        /* 수온 23℃ 이상 — 주황/따뜻 */
+        .wtemp-warm { background: linear-gradient(135deg, rgba(255,160,60,0.15), rgba(240,120,40,0.08)); border: 1px solid rgba(255,160,60,0.3); }
+        .wtemp-warm:hover { background: linear-gradient(135deg, rgba(255,160,60,0.25), rgba(240,120,40,0.15)); border-color: rgba(255,160,60,0.5); box-shadow: 0 3px 12px rgba(255,160,60,0.15); }
+        .wtemp-warm .water-temp-label { color: rgba(255,190,110,0.7); }
+        .wtemp-warm .water-temp-value { color: #ffb860; text-shadow: 0 0 8px rgba(255,160,60,0.3); }
+
         /* 방류 새 글 알림 뱃지 + 펄스 */
         .tab-btn .new-badge { display: none; background: var(--high); color: #fff; font-size: 0.65em; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 700; vertical-align: middle; }
         .tab-btn.has-new .new-badge { display: inline; }

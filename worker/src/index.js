@@ -860,6 +860,78 @@ async function fetchAwsTemperature(stn, authKey) {
   return { ta: String(ta), re: re > 0 ? '1' : '0', obsTime: cols[0], stn: parseInt(cols[1]) };
 }
 
+// ==================== 수온 (Water Temperature) ====================
+async function fetchWaterTempForDate(apiKey, obsCode, dateStr) {
+  const apiUrl = new URL('https://apis.data.go.kr/1192136/surveyWaterTemp/GetSurveyWaterTempApiService');
+  apiUrl.searchParams.set('serviceKey', apiKey);
+  apiUrl.searchParams.set('type', 'json');
+  apiUrl.searchParams.set('obsCode', obsCode);
+  apiUrl.searchParams.set('reqDate', dateStr);
+  apiUrl.searchParams.set('min', '60');
+  apiUrl.searchParams.set('numOfRows', '300');
+  const resp = await fetch(apiUrl.toString());
+  if (!resp.ok) return null;
+  const data = await resp.json();
+  const code = data?.header?.resultCode;
+  if (code === '03' || !data?.body?.items?.item) return null;
+  const items = data.body.items.item;
+  return items[items.length - 1]; // 가장 최근 관측값
+}
+
+async function handleWaterTemp(env, request, url, ctx) {
+  const obsCode = url.searchParams.get('obsCode');
+  if (!obsCode || !/^[A-Za-z0-9_-]{2,20}$/.test(obsCode)) {
+    return jsonResponse({ error: 'Invalid obsCode' }, 400, request);
+  }
+
+  const kst = new Date(Date.now() + 9 * 3600000);
+  const today = kst.toISOString().slice(0, 10).replace(/-/g, '');
+
+  // 캐시 키: 1시간 단위
+  const hh = String(kst.getHours()).padStart(2, '0');
+  const cacheKey = new Request(`https://tide-cache.internal/water-temp-v2/${obsCode}/${today}/${hh}`);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return addCorsHeaders(cached, request);
+
+  const apiKey = env.DATA_GO_KR_API_KEY;
+  if (!apiKey) return jsonResponse({ error: 'Missing API key' }, 500, request);
+
+  try {
+    // 오늘 데이터 시도 → 없으면 어제로 fallback
+    let latest = await fetchWaterTempForDate(apiKey, obsCode, today);
+    if (!latest) {
+      const yesterday = new Date(kst.getTime() - 86400000);
+      const yStr = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
+      latest = await fetchWaterTempForDate(apiKey, obsCode, yStr);
+    }
+
+    if (!latest) {
+      const nodata = jsonResponse({ wtem: null, obsCode, message: 'NODATA' }, 200, request);
+      const nr = new Response(nodata.body, nodata);
+      nr.headers.set('Cache-Control', 'public, max-age=1800');
+      ctx.waitUntil(cache.put(cacheKey, nr.clone()));
+      return addCorsHeaders(nr, request);
+    }
+
+    const result = {
+      wtem: latest.wtem,
+      obsCode,
+      obsvtrNm: latest.obsvtrNm,
+      obsrvnDt: latest.obsrvnDt,
+      fetchedAt: kst.toISOString().replace('Z', '+09:00'),
+    };
+
+    const response = jsonResponse(result, 200, request);
+    const cr = new Response(response.body, response);
+    cr.headers.set('Cache-Control', 'public, max-age=3600');
+    ctx.waitUntil(cache.put(cacheKey, cr.clone()));
+    return addCorsHeaders(cr, request);
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500, request);
+  }
+}
+
 async function handleWeather(env, request, url, ctx) {
   const nx = url.searchParams.get('nx');
   const ny = url.searchParams.get('ny');
@@ -1452,6 +1524,11 @@ export default {
       return handleWeather(env, request, url, ctx);
     }
 
+    // 수온 API: GET /api/water-temp?obsCode=DT_0025
+    if (url.pathname === '/api/water-temp') {
+      return handleWaterTemp(env, request, url, ctx);
+    }
+
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
     if (url.pathname === '/api/discharge-notice') {
       return handleDischargeNotice(ctx, request, env);
@@ -1545,6 +1622,7 @@ export default {
           '/api/khoa/current-point', '/api/khoa/current-area',
           '/api/discharge-notice',
           '/api/weather',
+          '/api/water-temp',
           '/api/lunar',
           '/api/visitor'
         ]
