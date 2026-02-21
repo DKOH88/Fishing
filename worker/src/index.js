@@ -1534,5 +1534,28 @@ export default {
     }
 
     console.log(`[precache] Done: cached=${results.cached}, hit=${results.hit}, error=${results.error}, total=${results.total}`);
+
+    // current-window 사전 캐싱 (유속% 정규화용, 중복 currentCode 제거)
+    const seenCodes = new Set();
+    const cwTasks = PRECACHE_PORTS
+      .filter(p => p.currentCode && !seenCodes.has(p.currentCode) && seenCodes.add(p.currentCode))
+      .map(p => ({ code: p.currentCode }));
+    let cwCached = 0, cwHit = 0, cwErr = 0;
+    for (const task of cwTasks) {
+      for (const date of dates) {
+        const ck = buildCacheKey('current-window', task.code, date, 'default');
+        const existing = await cache.match(ck);
+        if (existing) { cwHit++; continue; }
+        try {
+          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/current-window?obsCode=${task.code}&reqDate=${date}`);
+          const fakeReq = new Request(fakeUrl.toString());
+          const resp = await handleCurrentWindowRequest(fakeUrl, env, ctx, fakeReq);
+          if (resp.status === 200) cwCached++;
+          else cwErr++;
+        } catch (e) { cwErr++; }
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+    console.log(`[precache] current-window: cached=${cwCached}, hit=${cwHit}, error=${cwErr}`);
   }
 };

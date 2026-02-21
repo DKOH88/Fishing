@@ -3089,54 +3089,38 @@
         infoEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>조류 데이터 로딩...</div></div>';
 
         try {
-            const firstPageItems = await apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
-                obsCode: cStation,
-                reqDate: dateStr,
-                // crntFcstTime는 1페이지당 300건 기준으로 페이지네이션하는 것이 가장 안정적이다.
-                numOfRows: '300',
-                pageNo: '1',
-                min: '10'
-            });
-
-            let fldEbbSummary = null;
-            try {
-                const fldEbbItems = await apiCall('crntFcstFldEbb/GetCrntFcstFldEbbApiService', {
-                    obsCode: cStation,
-                    reqDate: dateStr,
-                    numOfRows: '20',
-                    pageNo: '1'
-                });
-                fldEbbSummary = parseFldEbbSummary(fldEbbItems);
-            } catch(e) {
-                // 창/낙조 API 실패 시 표/차트는 기본 데이터로 계속 표시
-            }
-
-            let areaSummary = null;
+            // 3개 API 병렬 호출 (직렬 대비 ~1~2초 단축)
             const today = new Date(); const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
-            try {
-                const geo = getActiveGeoPoint(stationCode);
-                if (geo && dateStr >= todayStr) {
+            const [firstPageItems, fldEbbResult, areaResult] = await Promise.all([
+                // ① 조류 시계열 (crntFcstTime)
+                apiCall('crntFcstTime/GetCrntFcstTimeApiService', {
+                    obsCode: cStation, reqDate: dateStr,
+                    numOfRows: '300', pageNo: '1', min: '10'
+                }),
+                // ② 창낙조 요약 (crntFcstFldEbb)
+                apiCall('crntFcstFldEbb/GetCrntFcstFldEbbApiService', {
+                    obsCode: cStation, reqDate: dateStr,
+                    numOfRows: '20', pageNo: '1'
+                }).catch(() => null),
+                // ③ 면조류 (오늘/미래만)
+                (async () => {
+                    const geo = getActiveGeoPoint(stationCode);
+                    if (!geo || dateStr < todayStr) return null;
                     const bounds = getKhoaAreaBounds(geo.lat, geo.lon);
                     const t = getKhoaAreaQueryTime(dateStr);
                     const areaRaw = await apiCallRaw('/api/khoa/current-area', {
-                        date: dateStr,
-                        hour: t.hour,
-                        minute: t.minute,
-                        minX: bounds.minX,
-                        maxX: bounds.maxX,
-                        minY: bounds.minY,
-                        maxY: bounds.maxY,
-                        scale: '400000'
+                        date: dateStr, hour: t.hour, minute: t.minute,
+                        minX: bounds.minX, maxX: bounds.maxX,
+                        minY: bounds.minY, maxY: bounds.maxY, scale: '400000'
                     });
-                    areaSummary = parseKhoaAreaSummary(areaRaw);
-                    if (areaSummary) {
-                        areaSummary.timeLabel = t.label;
-                        areaSummary.areaName = geo.name;
-                    }
-                }
-            } catch(e) {
-                // 면조류 실패 시 기본 조류 정보만 표시
-            }
+                    const summary = parseKhoaAreaSummary(areaRaw);
+                    if (summary) { summary.timeLabel = t.label; summary.areaName = geo.name; }
+                    return summary;
+                })().catch(() => null)
+            ]);
+
+            const fldEbbSummary = fldEbbResult ? parseFldEbbSummary(fldEbbResult) : null;
+            const areaSummary = areaResult;
 
             if (!firstPageItems || firstPageItems.length === 0) {
                 infoEl.innerHTML = '<div class="error-msg">조류 데이터가 없습니다. 예보점을 확인해주세요.</div>';
