@@ -1379,7 +1379,7 @@
                     const t = parseFloat(wt.wtem);
                     if (isNaN(t)) return '';
                     const tDisp = Number.isInteger(t) ? t : t.toFixed(1);
-                    const cls = t <= 16 ? 'cold' : t <= 20 ? 'mid' : 'warm';
+                    const cls = t <= 16 ? 'cold' : t <= 22 ? 'mid' : 'warm';
                     return `<div class="water-temp-widget wtemp-${cls}">
                         <span class="water-temp-icon">🌊</span>
                         <div class="water-temp-text">
