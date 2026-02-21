@@ -563,7 +563,12 @@
                 document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
                 // 방류 탭 진입 시
                 if (btn.dataset.tab === 'discharge') {
-                    _clearDischargeNewBadge(); // 새 글 알림 제거
+                    _clearDischargeNewBadge(); // 탭 뱃지 제거
+                    // 현재 newNos를 "확인함"으로 저장 + 목록 N 뱃지 제거
+                    if (window._dischargeData && window._dischargeData.newNos) {
+                        _markNosSeen(window._dischargeData.newNos);
+                    }
+                    document.querySelectorAll('.discharge-row.is-new-post').forEach(el => el.classList.remove('is-new-post'));
                     if (!window._dischargeLoaded) loadDischargeNotices();
                 }
             });
@@ -600,6 +605,21 @@
         }
 
         // 새 글 알림: 탭 버튼에 뱃지 표시
+        const DISCHARGE_SEEN_KEY = 'discharge-seen-nos';
+        function _getSeenNos() {
+            try { return new Set(JSON.parse(sessionStorage.getItem(DISCHARGE_SEEN_KEY) || '[]')); } catch { return new Set(); }
+        }
+        function _markNosSeen(nos) {
+            if (!nos || !nos.length) return;
+            const seen = _getSeenNos();
+            nos.forEach(n => seen.add(n));
+            sessionStorage.setItem(DISCHARGE_SEEN_KEY, JSON.stringify([...seen]));
+        }
+        function _getUnseenNos(newNos) {
+            if (!newNos || !newNos.length) return [];
+            const seen = _getSeenNos();
+            return newNos.filter(n => !seen.has(n));
+        }
         function _showDischargeNewBadge(count) {
             if (count <= 0) return;
             const btn = document.querySelector('.tab-btn[data-tab="discharge"]');
@@ -617,9 +637,12 @@
         // 페이지 로드 시 백그라운드 프리페치 (await 없이 fire-and-forget)
         if (!_getClientCache(DISCHARGE_CACHE_KEY)) {
             window._dischargePrefetch = _fetchDischargeData();
-            // 프리페치 완료 시 새 글 감지 → 탭 애니메이션
+            // 프리페치 완료 시 새 글 감지 → 탭 애니메이션 (확인한 글 제외)
             window._dischargePrefetch.then(data => {
-                if (data && data.newCount > 0) _showDischargeNewBadge(data.newCount);
+                if (data && data.newCount > 0) {
+                    const unseen = _getUnseenNos(data.newNos);
+                    if (unseen.length > 0) _showDischargeNewBadge(unseen.length);
+                }
             }).catch(() => {});
         }
 
@@ -651,8 +674,8 @@
                 window._dischargeLoaded = true;
                 window._dischargeData = data;
 
-                // 새 글 뱃지 갱신 (forceRefresh 시에도)
-                if (data.newCount > 0) _showDischargeNewBadge(data.newCount);
+                // 아직 확인하지 않은 새 글 번호 (N 뱃지용)
+                const unseenNos = _getUnseenNos(data.newNos);
 
                 if (notices.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">현재 방류 계획 알림이 없습니다.</div>';
@@ -661,7 +684,7 @@
                 }
 
                 const portName = window._selectedPort ? window._selectedPort.name : null;
-                const newNoSet = new Set(data.newNos || []);
+                const newNoSet = new Set(unseenNos);
 
                 let html = '<table class="discharge-table"><thead><tr>';
                 html += '<th>제목</th><th>등록일</th>';
@@ -686,6 +709,12 @@
 
                 html += '</tbody></table>';
                 container.innerHTML = html;
+
+                // 목록을 봤으므로 새 글을 "확인함"으로 저장 + 탭 뱃지 제거
+                if (unseenNos.length > 0) {
+                    _markNosSeen(unseenNos);
+                    _clearDischargeNewBadge();
+                }
 
                 // 아코디언 클릭 이벤트
                 container.querySelectorAll('.discharge-title').forEach(el => {
