@@ -1233,7 +1233,9 @@
                 ${(() => {
                     const w = window._weatherInfo;
                     if (!w) return '';
-                    return `<div class="weather-widget">
+                    const t = parseInt(w.tmp);
+                    const tc = isNaN(t) ? 'mild' : t <= 0 ? 'freeze' : t <= 10 ? 'cold' : t <= 20 ? 'mild' : t <= 30 ? 'warm' : 'hot';
+                    return `<div class="weather-widget wt-${tc}">
                         <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
                         <div class="weather-widget-text">
                             <span class="weather-widget-label">오늘의 날씨</span>

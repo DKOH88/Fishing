@@ -200,29 +200,53 @@
         .fishing-index-btn::after { content: '▾'; font-size: 0.7em; margin-left: 2px; opacity: 0.6; }
         .fishing-popup { position: absolute; left: 0; top: 110%; z-index: 100; background: #1a2a44; border: 1px solid #2a4a6f; border-radius: 8px; padding: 10px 14px; font-size: 0.95em; color: #c8ddf0; line-height: 1.7; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
 
-        /* 날씨 위젯 */
+        /* 날씨 위젯 — 기본 레이아웃 */
         .weather-widget {
             display: inline-flex; align-items: center; gap: 6px;
-            background: linear-gradient(135deg, rgba(255,180,50,0.12), rgba(255,120,30,0.08));
-            border: 1px solid rgba(255,180,50,0.25);
             border-radius: 20px; padding: 4px 12px 4px 6px;
             animation: weatherFadeIn 0.6s ease-out;
             transition: all 0.3s ease;
         }
-        .weather-widget:hover {
-            background: linear-gradient(135deg, rgba(255,180,50,0.22), rgba(255,120,30,0.15));
-            border-color: rgba(255,180,50,0.45);
-            transform: translateY(-1px);
-            box-shadow: 0 3px 12px rgba(255,160,40,0.15);
-        }
-        .weather-widget-icon {
-            width: 30px; height: 30px;
-            filter: drop-shadow(0 1px 3px rgba(255,180,50,0.3));
-            animation: weatherIconPulse 3s ease-in-out infinite;
-        }
+        .weather-widget:hover { transform: translateY(-1px); }
+        .weather-widget-icon { width: 30px; height: 30px; animation: weatherIconPulse 3s ease-in-out infinite; }
         .weather-widget-text { display: flex; flex-direction: column; line-height: 1.1; }
-        .weather-widget-label { font-size: 0.58em; color: rgba(255,200,100,0.7); letter-spacing: 0.5px; }
-        .weather-widget-temp { font-size: 0.88em; font-weight: 700; color: #ffcc66; text-shadow: 0 0 8px rgba(255,200,80,0.3); }
+        .weather-widget-label { font-size: 0.58em; letter-spacing: 0.5px; }
+        .weather-widget-temp { font-size: 0.88em; font-weight: 700; }
+
+        /* 0°C 이하 — 파랑 */
+        .wt-freeze { background: linear-gradient(135deg, rgba(100,150,255,0.15), rgba(60,120,220,0.08)); border: 1px solid rgba(100,150,255,0.3); }
+        .wt-freeze:hover { background: linear-gradient(135deg, rgba(100,150,255,0.25), rgba(60,120,220,0.15)); border-color: rgba(100,150,255,0.5); box-shadow: 0 3px 12px rgba(100,150,255,0.15); }
+        .wt-freeze .weather-widget-icon { filter: drop-shadow(0 1px 3px rgba(100,150,255,0.4)); }
+        .wt-freeze .weather-widget-label { color: rgba(140,180,255,0.7); }
+        .wt-freeze .weather-widget-temp { color: #8cb4ff; text-shadow: 0 0 8px rgba(100,150,255,0.3); }
+
+        /* 1~10°C — 하늘색 */
+        .wt-cold { background: linear-gradient(135deg, rgba(80,200,230,0.15), rgba(50,170,210,0.08)); border: 1px solid rgba(80,200,230,0.3); }
+        .wt-cold:hover { background: linear-gradient(135deg, rgba(80,200,230,0.25), rgba(50,170,210,0.15)); border-color: rgba(80,200,230,0.5); box-shadow: 0 3px 12px rgba(80,200,230,0.15); }
+        .wt-cold .weather-widget-icon { filter: drop-shadow(0 1px 3px rgba(80,200,230,0.4)); }
+        .wt-cold .weather-widget-label { color: rgba(130,220,240,0.7); }
+        .wt-cold .weather-widget-temp { color: #7cdce8; text-shadow: 0 0 8px rgba(80,200,230,0.3); }
+
+        /* 11~20°C — 녹색 */
+        .wt-mild { background: linear-gradient(135deg, rgba(80,200,100,0.15), rgba(50,180,80,0.08)); border: 1px solid rgba(80,200,100,0.3); }
+        .wt-mild:hover { background: linear-gradient(135deg, rgba(80,200,100,0.25), rgba(50,180,80,0.15)); border-color: rgba(80,200,100,0.5); box-shadow: 0 3px 12px rgba(80,200,100,0.15); }
+        .wt-mild .weather-widget-icon { filter: drop-shadow(0 1px 3px rgba(80,200,100,0.4)); }
+        .wt-mild .weather-widget-label { color: rgba(130,220,140,0.7); }
+        .wt-mild .weather-widget-temp { color: #6ddb82; text-shadow: 0 0 8px rgba(80,200,100,0.3); }
+
+        /* 21~30°C — 주황 */
+        .wt-warm { background: linear-gradient(135deg, rgba(255,180,50,0.15), rgba(255,120,30,0.08)); border: 1px solid rgba(255,180,50,0.3); }
+        .wt-warm:hover { background: linear-gradient(135deg, rgba(255,180,50,0.25), rgba(255,120,30,0.15)); border-color: rgba(255,180,50,0.5); box-shadow: 0 3px 12px rgba(255,160,40,0.15); }
+        .wt-warm .weather-widget-icon { filter: drop-shadow(0 1px 3px rgba(255,180,50,0.4)); }
+        .wt-warm .weather-widget-label { color: rgba(255,200,100,0.7); }
+        .wt-warm .weather-widget-temp { color: #ffcc66; text-shadow: 0 0 8px rgba(255,200,80,0.3); }
+
+        /* 31°C 이상 — 빨강 */
+        .wt-hot { background: linear-gradient(135deg, rgba(255,80,80,0.15), rgba(220,50,50,0.08)); border: 1px solid rgba(255,80,80,0.3); }
+        .wt-hot:hover { background: linear-gradient(135deg, rgba(255,80,80,0.25), rgba(220,50,50,0.15)); border-color: rgba(255,80,80,0.5); box-shadow: 0 3px 12px rgba(255,80,80,0.15); }
+        .wt-hot .weather-widget-icon { filter: drop-shadow(0 1px 3px rgba(255,80,80,0.4)); }
+        .wt-hot .weather-widget-label { color: rgba(255,140,140,0.7); }
+        .wt-hot .weather-widget-temp { color: #ff7070; text-shadow: 0 0 8px rgba(255,80,80,0.3); }
         @keyframes weatherFadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
         @keyframes weatherIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
 
