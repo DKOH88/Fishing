@@ -1234,7 +1234,7 @@
                     const w = window._weatherInfo;
                     if (!w) return '';
                     const t = parseFloat(w.tmp);
-                    const tDisplay = isNaN(t) ? '--' : Math.round(t);
+                    const tDisplay = isNaN(t) ? '--' : (Number.isInteger(t) ? t : t.toFixed(1));
                     const tc = isNaN(t) ? 'mild' : t <= 0 ? 'freeze' : t <= 10 ? 'cold' : t <= 20 ? 'mild' : t <= 30 ? 'warm' : 'hot';
                     return `<div class="weather-widget wt-${tc}">
                         <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
