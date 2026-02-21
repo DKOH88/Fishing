@@ -923,7 +923,7 @@ async function handleWeather(env, request, url, ctx) {
 async function handleDischargeNotice(ctx, request, env) {
   // 30분 캐시
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.internal/discharge-notice-v4', { method: 'GET' });
+  const cacheKey = new Request('https://cache.internal/discharge-notice-v7', { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     // 캐시된 응답에 현재 요청의 CORS 헤더 적용
@@ -1018,19 +1018,21 @@ async function handleDischargeNotice(ctx, request, env) {
 
     // KV에서 이전에 알려진 글 번호 목록 조회 → 새 글 감지
     let newCount = 0;
+    let newNos = [];
     try {
       const KV = env.VISITOR_STORE;
       const knownRaw = await KV.get('discharge-known-nos');
       const currentNos = rows.map(r => r.no);
       if (knownRaw !== null) {
         const knownSet = new Set(JSON.parse(knownRaw));
-        newCount = currentNos.filter(n => !knownSet.has(n)).length;
+        newNos = currentNos.filter(n => !knownSet.has(n));
+        newCount = newNos.length;
       }
       // KV 업데이트 (비동기, 응답 블로킹 안 함)
       ctx.waitUntil(KV.put('discharge-known-nos', JSON.stringify(currentNos)));
     } catch (_) { /* KV 실패 시 newCount=0으로 진행 */ }
 
-    const result = { notices: rows, newCount, fetchedAt: new Date().toISOString() };
+    const result = { notices: rows, newCount, newNos, fetchedAt: new Date().toISOString() };
     const jsonBody = JSON.stringify(result);
 
     // 30분 캐시 저장 (방류 공지는 자주 변하지 않음)

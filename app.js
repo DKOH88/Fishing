@@ -591,7 +591,7 @@
         }
 
         // 방류 데이터 fetch (캐시 → 프리페치 Promise → 네트워크)
-        const DISCHARGE_CACHE_KEY = 'discharge-notice-v2';
+        const DISCHARGE_CACHE_KEY = 'discharge-notice-v3';
         const DISCHARGE_CACHE_TTL = 30 * 60 * 1000; // 30분
 
         function _fetchDischargeData() {
@@ -661,6 +661,7 @@
                 }
 
                 const portName = window._selectedPort ? window._selectedPort.name : null;
+                const newNoSet = new Set(data.newNos || []);
 
                 let html = '<table class="discharge-table"><thead><tr>';
                 html += '<th>제목</th><th>등록일</th>';
@@ -669,7 +670,8 @@
                 for (let i = 0; i < notices.length; i++) {
                     const n = notices[i];
                     const isMatch = portName && isDischargeRelevant(n.title, portName);
-                    const rowClass = isMatch ? ' discharge-highlight' : '';
+                    const isNew = newNoSet.has(n.no);
+                    const rowClass = (isMatch ? ' discharge-highlight' : '') + (isNew ? ' is-new-post' : '');
                     const hasContent = n.content && n.content.trim();
                     html += `<tr class="discharge-row${rowClass}" data-idx="${i}">`;
                     html += `<td><span class="discharge-title" data-idx="${i}"><span class="arrow">▶</span>${n.title}</span></td>`;

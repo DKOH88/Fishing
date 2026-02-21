@@ -256,6 +256,11 @@
         @keyframes tabNewPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,82,82,0.5); } 50% { box-shadow: 0 0 8px 3px rgba(255,82,82,0.3); } }
         .tab-btn.has-new { animation: tabNewPulse 2s ease-in-out infinite; }
 
+        /* 방류 목록 내 새 글 행 하이라이트 */
+        .discharge-row.is-new-post { background: rgba(255,82,82,0.08); }
+        .discharge-row.is-new-post td:first-child .discharge-title::before { content: 'N'; display: inline-block; background: var(--high); color: #fff; font-size: 0.65em; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-right: 6px; vertical-align: middle; animation: newPostGlow 2s ease-in-out infinite; }
+        @keyframes newPostGlow { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
+
         .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
 
         @media (max-width: 600px) {
