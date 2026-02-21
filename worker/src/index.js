@@ -1076,7 +1076,7 @@ async function handleWeather(env, request, url, ctx) {
           }
         }
       }
-      // 2) 초단기실황 fallback (AWS 실패 시)
+      // 2) 초단기실황 fallback (AWS 실패 시) — 1시간 캐시
       if (tmp === null) {
         let baseDate = yyyymmdd;
         let baseHour = hh;
@@ -1085,58 +1085,89 @@ async function handleWeather(env, request, url, ctx) {
           if (baseHour < 0) { baseHour = 23; const y = new Date(now.getTime() - 86400000); baseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
         }
         const baseTime = String(baseHour).padStart(2, '0') + '00';
-        const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
-          + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
-          + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
-        try {
-          const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-          if (ncstResp.ok) {
-            const ncstData = await ncstResp.json();
-            const ncstItems = ncstData?.response?.body?.items?.item;
-            if (ncstItems && Array.isArray(ncstItems)) {
-              for (const item of ncstItems) {
-                if (item.category === 'T1H') tmp = item.obsrValue;
-                if (item.category === 'PTY') pty = item.obsrValue;
-                if (item.category === 'WSD') wsd = item.obsrValue;
-                if (item.category === 'VEC') vec = item.obsrValue;
-              }
-              fcstTime = baseTime;
-            }
+        const ncstCacheKey = new Request(`https://cache.internal/ncst-v1-${nx}-${ny}-${baseDate}-${baseTime}`);
+        const ncstCached = await cache.match(ncstCacheKey);
+        if (ncstCached) {
+          const ncstItems = await ncstCached.json();
+          for (const item of ncstItems) {
+            if (item.category === 'T1H') tmp = item.obsrValue;
+            if (item.category === 'PTY') pty = item.obsrValue;
+            if (item.category === 'WSD') wsd = item.obsrValue;
+            if (item.category === 'VEC') vec = item.obsrValue;
           }
-        } catch (e) { /* fallback 실패 */ }
+          fcstTime = baseTime;
+        } else {
+          const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
+            + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
+            + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
+          try {
+            const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+            if (ncstResp.ok) {
+              const ncstData = await ncstResp.json();
+              const ncstItems = ncstData?.response?.body?.items?.item;
+              if (ncstItems && Array.isArray(ncstItems)) {
+                for (const item of ncstItems) {
+                  if (item.category === 'T1H') tmp = item.obsrValue;
+                  if (item.category === 'PTY') pty = item.obsrValue;
+                  if (item.category === 'WSD') wsd = item.obsrValue;
+                  if (item.category === 'VEC') vec = item.obsrValue;
+                }
+                fcstTime = baseTime;
+                // 1시간 캐시 저장
+                const ncstCacheResp = new Response(JSON.stringify(ncstItems), {
+                  headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+                });
+                ctx.waitUntil(cache.put(ncstCacheKey, ncstCacheResp));
+              }
+            }
+          } catch (e) { /* fallback 실패 */ }
+        }
       }
     })();
 
-    // B) 초단기예보 (SKY 하늘상태) — 독립적이므로 A와 동시 시작
+    // B) 초단기예보 (SKY 하늘상태) — 독립적이므로 A와 동시 시작, 30분 캐시
     let sky = null;
     let fcstFallback = {};  // tmp/pty/wsd/vec fallback 값 임시 저장
     const skyPromise = (async () => {
-      const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
-        + `?serviceKey=${apiKey}&numOfRows=60&pageNo=1&dataType=JSON`
-        + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}&nx=${nx}&ny=${ny}`;
-      try {
-        const fcstResp = await fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-        if (fcstResp.ok) {
-          const fcstData = await fcstResp.json();
-          const fcstItems = fcstData?.response?.body?.items?.item;
-          if (fcstItems && Array.isArray(fcstItems)) {
-            const targetHour = String(hh).padStart(2, '0') + '00';
-            for (const item of fcstItems) {
-              if (item.fcstTime === targetHour) {
-                if (item.category === 'SKY') sky = item.fcstValue;
-                if (item.category === 'T1H') fcstFallback.tmp = item.fcstValue;
-                if (item.category === 'PTY') fcstFallback.pty = item.fcstValue;
-                if (item.category === 'WSD') fcstFallback.wsd = item.fcstValue;
-                if (item.category === 'VEC') fcstFallback.vec = item.fcstValue;
+      const fcstCacheKey = new Request(`https://cache.internal/fcst-v1-${nx}-${ny}-${fcstBaseDate}-${fcstBaseTime}`);
+      const fcstCached = await cache.match(fcstCacheKey);
+      if (fcstCached) {
+        const cached = await fcstCached.json();
+        sky = cached.sky;
+        fcstFallback = cached.fallback || {};
+      } else {
+        const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
+          + `?serviceKey=${apiKey}&numOfRows=60&pageNo=1&dataType=JSON`
+          + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}&nx=${nx}&ny=${ny}`;
+        try {
+          const fcstResp = await fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+          if (fcstResp.ok) {
+            const fcstData = await fcstResp.json();
+            const fcstItems = fcstData?.response?.body?.items?.item;
+            if (fcstItems && Array.isArray(fcstItems)) {
+              const targetHour = String(hh).padStart(2, '0') + '00';
+              for (const item of fcstItems) {
+                if (item.fcstTime === targetHour) {
+                  if (item.category === 'SKY') sky = item.fcstValue;
+                  if (item.category === 'T1H') fcstFallback.tmp = item.fcstValue;
+                  if (item.category === 'PTY') fcstFallback.pty = item.fcstValue;
+                  if (item.category === 'WSD') fcstFallback.wsd = item.fcstValue;
+                  if (item.category === 'VEC') fcstFallback.vec = item.fcstValue;
+                }
               }
-            }
-            if (sky === null) {
-              const first = fcstItems.find(i => i.category === 'SKY');
-              if (first) sky = first.fcstValue;
+              if (sky === null) {
+                const first = fcstItems.find(i => i.category === 'SKY');
+                if (first) sky = first.fcstValue;
+              }
+              // 30분 캐시 저장
+              const fcstCacheResp = new Response(JSON.stringify({ sky, fallback: fcstFallback }), {
+                headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' },
+              });
+              ctx.waitUntil(cache.put(fcstCacheKey, fcstCacheResp));
             }
           }
-        }
-      } catch (e) { /* 예보 실패 */ }
+        } catch (e) { /* 예보 실패 */ }
+      }
     })();
 
     // 두 호출 모두 완료 대기
