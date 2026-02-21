@@ -1,5 +1,6 @@
 == Commit Log ==
 
+✅ [26-02-21┃10:27:51] 117bd1b — CSP connect-src 수정 + observability 대시보드 자동열림 차단 + 커밋로그 날짜양식 적용
 ✅ [26-02-21┃09:56:51] 11231d9 — 유속% crsp 직접 정규화 전환: 조차 간접 추정 → 유속 데이터 ±15일 윈도우 정규화 + Worker /api/current-window 엔드포인트 추가
 ✅ [26-02-20┃20:40:27] 3aac9b5 — 유속% 계산 단순화: p10/p90 동적 정규화 → MIN/MAX 고정 정규화 + 갑오징어 규칙 실측 보정
 ✅ [26-02-19┃11:39:32] 56a0b62 — 보안 강화: CSP unsafe-inline 제거, 듀얼 윈도우 rate limiter 적용
