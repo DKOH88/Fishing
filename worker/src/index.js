@@ -12,7 +12,6 @@ const ENDPOINT_MAP = {
   'tide-level': 'surveyTideLevel/GetSurveyTideLevelApiService',
   'current':    'crntFcstTime/GetCrntFcstTimeApiService',
   'tide-time':  'tideFcstTime/GetTideFcstTimeApiService',
-  'tidebed':    'tidebed/GetTidebedApiService',
   'current-fld-ebb': 'crntFcstFldEbb/GetCrntFcstFldEbbApiService',
 };
 
@@ -21,7 +20,6 @@ const DEFAULT_PARAMS = {
   'tide-level': { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
   'current':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'tide-time':  { numOfRows: '300', pageNo: '1', type: 'json', min: '10' },
-  'tidebed':    { numOfRows: '300', pageNo: '1', type: 'json' },
   'current-fld-ebb': { numOfRows: '20', pageNo: '1', type: 'json' },
 };
 
@@ -133,7 +131,7 @@ function computeCacheTTL(endpoint, reqDate) {
   }
 
   if (reqDate === todayStr) {
-    if (endpoint === 'tide-level' || endpoint === 'tide-time' || endpoint === 'tidebed') {
+    if (endpoint === 'tide-level' || endpoint === 'tide-time') {
       // 오늘 실측 조위: 10분마다 갱신
       return 10 * 60;
     }
@@ -179,25 +177,13 @@ function buildUpstreamUrl(endpoint, obsCode, reqDate, apiKey, passthroughParams 
   const url = new URL(`${UPSTREAM_BASE}/${path}`);
 
   url.searchParams.set('serviceKey', apiKey);
-
-  if (endpoint === 'tidebed') {
-    // TideBED는 obsCode 대신 lat/lot 좌표 사용
-    const lat = passthroughParams.lat;
-    const lot = passthroughParams.lot;
-    if (lat) url.searchParams.set('lat', lat);
-    if (lot) url.searchParams.set('lot', lot);
-  } else {
-    url.searchParams.set('obsCode', obsCode);
-  }
-
+  url.searchParams.set('obsCode', obsCode);
   url.searchParams.set('reqDate', reqDate);
 
   const defaults = DEFAULT_PARAMS[endpoint];
   Object.entries(defaults).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  // tidebed의 lat/lot은 이미 위에서 처리했으므로 제외
   Object.entries(passthroughParams || {}).forEach(([k, v]) => {
-    if (endpoint === 'tidebed' && (k === 'lat' || k === 'lot')) return;
     url.searchParams.set(k, v);
   });
 
@@ -696,18 +682,6 @@ function buildPrecacheTasks(ports, dates) {
           });
         }
       }
-
-      // tidebed (lat/lon 기준)
-      const bedKey = `tidebed|${port.lat}|${port.lon}|${date}`;
-      if (!seen.has(bedKey)) {
-        seen.add(bedKey);
-        tasks.push({
-          endpoint: 'tidebed',
-          obsCode: null,
-          reqDate: date,
-          passthrough: { lat: port.lat, lot: port.lon, numOfRows: '300', pageNo: '1' },
-        });
-      }
     }
   }
 
@@ -719,12 +693,7 @@ function buildPrecacheTasks(ports, dates) {
  */
 async function precacheOneTask(task, apiKey, cache) {
   // 캐시 키 생성 (fetch 핸들러와 동일한 방식)
-  let cacheId;
-  if (task.endpoint === 'tidebed') {
-    cacheId = `${task.passthrough.lat}_${task.passthrough.lot}`;
-  } else {
-    cacheId = task.obsCode;
-  }
+  const cacheId = task.obsCode;
 
   const paramSig = makeParamSignature(task.passthrough);
   const cacheKey = buildCacheKey(task.endpoint, cacheId, task.reqDate, paramSig);
@@ -1367,14 +1336,83 @@ export default {
       return handleKhoaRequest(khoaMatch[1], url, env, ctx, request);
     }
 
+    // 배치 조위 API: 고저조 + 실측 + 시계열 예측을 1회 요청으로 묶음
+    if (url.pathname === '/api/batch-tide') {
+      const obsCode = url.searchParams.get('obsCode');
+      const reqDate = url.searchParams.get('reqDate');
+      const validationError = validateParams(obsCode, reqDate);
+      if (validationError) {
+        return jsonResponse({ error: validationError }, 400, request);
+      }
+
+      const apiKey = env.DATA_GO_KR_API_KEY;
+      if (!apiKey) {
+        return jsonResponse({ error: 'Server configuration error: API key not set' }, 500, request);
+      }
+
+      const cache = caches.default;
+      const batchEndpoints = ['tide-hilo', 'tide-level', 'tide-time'];
+      const defaultPassthrough = {
+        'tide-hilo':  { numOfRows: '20', pageNo: '1' },
+        'tide-level': { numOfRows: '300', pageNo: '1', min: '10' },
+        'tide-time':  { numOfRows: '300', pageNo: '1', min: '10' },
+      };
+      const resultKeys = { 'tide-hilo': 'hilo', 'tide-level': 'survey', 'tide-time': 'tideTime' };
+
+      const results = await Promise.allSettled(batchEndpoints.map(async (ep) => {
+        const pt = defaultPassthrough[ep];
+        const paramSig = makeParamSignature(pt);
+        const cacheKey = buildCacheKey(ep, obsCode, reqDate, paramSig);
+
+        // 캐시 확인
+        const cached = await cache.match(cacheKey);
+        if (cached) {
+          const data = await cached.json();
+          return { key: resultKeys[ep], data, cache: 'HIT' };
+        }
+
+        // 업스트림 호출
+        const upstreamUrl = buildUpstreamUrl(ep, obsCode, reqDate, apiKey, pt);
+        const resp = await fetch(upstreamUrl);
+        if (!resp.ok) throw new Error(`Upstream HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        const resultCode = extractApiLevelResultCode(data);
+        if (resultCode && resultCode !== '00') {
+          return { key: resultKeys[ep], data: null, cache: 'ERROR' };
+        }
+
+        // 캐시 저장
+        const ttl = computeCacheTTL(ep, reqDate);
+        const cacheResp = new Response(JSON.stringify(data), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': `public, max-age=${ttl}` },
+        });
+        ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));
+
+        return { key: resultKeys[ep], data, cache: 'MISS' };
+      }));
+
+      const batchResult = {};
+      results.forEach((r, idx) => {
+        if (r.status === 'fulfilled') {
+          batchResult[r.value.key] = r.value.data;
+        } else {
+          batchResult[resultKeys[batchEndpoints[idx]]] = null;
+        }
+      });
+
+      return jsonResponse(batchResult, 200, request);
+    }
+
     // 기존 공공데이터포털 API 라우팅: GET /api/{endpoint}
-    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|tidebed|current-fld-ebb)$/);
+    const match = url.pathname.match(/^\/api\/(tide-hilo|tide-level|current|tide-time|current-fld-ebb)$/);
     if (!match) {
       return jsonResponse({
         error: 'Not Found',
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
-          '/api/tide-time', '/api/tidebed', '/api/current-fld-ebb',
+          '/api/tide-time', '/api/current-fld-ebb',
+          '/api/batch-tide',
           '/api/current-window',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',
@@ -1392,25 +1430,12 @@ export default {
     const passthroughParams = extractPassthroughParams(url);
     const paramSig = makeParamSignature(passthroughParams);
 
-    // 입력 검증 (tidebed는 obsCode 대신 lat/lot 사용)
-    if (endpoint === 'tidebed') {
-      const lat = passthroughParams.lat;
-      const lot = passthroughParams.lot;
-      if (!lat || !lot || !COORD_RE.test(lat) || !COORD_RE.test(lot)) {
-        return jsonResponse({ error: 'Invalid lat/lot (required for tidebed)' }, 400, request);
-      }
-      if (!reqDate || !/^\d{8}$/.test(reqDate)) {
-        return jsonResponse({ error: 'Invalid reqDate (expected YYYYMMDD)' }, 400, request);
-      }
-    } else {
-      const validationError = validateParams(obsCode, reqDate);
-      if (validationError) {
-        return jsonResponse({ error: validationError }, 400, request);
-      }
+    const validationError = validateParams(obsCode, reqDate);
+    if (validationError) {
+      return jsonResponse({ error: validationError }, 400, request);
     }
 
-    // 캐시 확인 (tidebed는 lat/lot 기반 캐시키)
-    const cacheId = endpoint === 'tidebed' ? `${passthroughParams.lat}_${passthroughParams.lot}` : obsCode;
+    const cacheId = obsCode;
     const cacheKey = buildCacheKey(endpoint, cacheId, reqDate, paramSig);
     const cache = caches.default;
     const cached = await cache.match(cacheKey);

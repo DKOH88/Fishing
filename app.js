@@ -1400,14 +1400,45 @@
         'surveyTideLevel/GetSurveyTideLevelApiService': '/api/tide-level',
         'crntFcstTime/GetCrntFcstTimeApiService': '/api/current',
         'tideFcstTime/GetTideFcstTimeApiService': '/api/tide-time',
-        'tidebed/GetTidebedApiService': '/api/tidebed',
         'crntFcstFldEbb/GetCrntFcstFldEbbApiService': '/api/current-fld-ebb',
         'fcstFishingv2/GetFcstFishingApiServicev2': '/api/fishing-index',
     };
 
+    // 클라이언트 캐시 TTL (ms): 실측 데이터=10분, 예보=1시간
+    const CLIENT_CACHE_TTL = {
+        '/api/tide-level': 10 * 60 * 1000,
+        '/api/tide-hilo': 60 * 60 * 1000,
+        '/api/tide-time': 60 * 60 * 1000,
+        '/api/current': 10 * 60 * 1000,
+        '/api/current-fld-ebb': 60 * 60 * 1000,
+        '/api/fishing-index': 60 * 60 * 1000,
+    };
+
+    function _getClientCache(key) {
+        try {
+            const raw = sessionStorage.getItem(key);
+            if (!raw) return null;
+            const { data, ts, ttl } = JSON.parse(raw);
+            if (Date.now() - ts < ttl) return data;
+            sessionStorage.removeItem(key);
+        } catch(e) { /* 캐시 손상 무시 */ }
+        return null;
+    }
+
+    function _setClientCache(key, data, ttl) {
+        try {
+            sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now(), ttl }));
+        } catch(e) { /* sessionStorage 용량 초과 등 무시 */ }
+    }
+
     async function apiCall(path, params) {
         const endpoint = PROXY_ENDPOINT_MAP[path];
         if (!endpoint) throw new Error(`Unknown API path: ${path}`);
+
+        // 클라이언트 캐시 조회
+        const cacheKey = `tc_${endpoint}_${JSON.stringify(params || {})}`;
+        const cached = _getClientCache(cacheKey);
+        if (cached) return cached;
 
         const url = new URL(`${API_BASE}${endpoint}`);
         Object.entries(params || {}).forEach(([k, v]) => {
@@ -1437,7 +1468,13 @@
             || json?.response?.body?.items?.item
             || json?.result?.data
             || [];
-        return Array.isArray(items) ? items : [items];
+        const result = Array.isArray(items) ? items : [items];
+
+        // 클라이언트 캐시 저장
+        const ttl = CLIENT_CACHE_TTL[endpoint] || 10 * 60 * 1000;
+        _setClientCache(cacheKey, result, ttl);
+
+        return result;
     }
 
     async function apiCallRaw(endpoint, params) {
@@ -1469,6 +1506,29 @@
         });
     }
 
+    // batch-tide API로 고저조+실측+예측을 1회 요청으로 가져오기 (fallback: 개별 호출)
+    async function fetchBatchTide(stationCode, dateStr) {
+        try {
+            const resp = await apiCallRaw(`/api/batch-tide?obsCode=${encodeURIComponent(stationCode)}&reqDate=${encodeURIComponent(dateStr)}`);
+            if (!resp || (!resp.hilo && !resp.survey && !resp.tideTime)) throw new Error('빈 batch 응답');
+            const extract = (d) => {
+                if (!d) return null;
+                const items = d?.body?.items?.item || d?.response?.body?.items?.item || d?.result?.data;
+                if (!items) return null;
+                const arr = Array.isArray(items) ? items : [items];
+                return arr.length > 0 ? arr : null;
+            };
+            return {
+                hilo: extract(resp.hilo),
+                survey: extract(resp.survey),
+                tideTime: extract(resp.tideTime),
+            };
+        } catch(e) {
+            console.warn('[batch-tide] fallback to individual calls:', e.message);
+            return null; // fallback 신호
+        }
+    }
+
     async function fetchAll() {
         _setNavLoading(true);
         let chartLoadDone = false;
@@ -1478,37 +1538,64 @@
         const mulddaeBtn = document.getElementById('mulddaeReloadBtn');
         if (mulddaeBtn) { mulddaeBtn.disabled = true; mulddaeBtn.classList.add('is-spinning'); }
 
-        // 조위예보 API 3개를 고저조와 동시에 미리 시작 (네트워크 대기 시간 겹침)
         const stationCode = getStation();
         const dateStr = getDateStr();
-        const geo = getActiveGeoPoint(stationCode);
-        const predictionAPIs = [
-            apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
-                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
-            }),
-            geo ? apiCall('tidebed/GetTidebedApiService', {
-                lat: geo.lat, lot: geo.lon, reqDate: dateStr, numOfRows: '300', pageNo: '1'
-            }) : Promise.resolve([]),
-            apiCall('tideFcstTime/GetTideFcstTimeApiService', {
-                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
-            }),
-        ];
 
-        // 고저조 + 유속: 동시 시작
-        const hlPromise = fetchTideHighLow();
+        // batch API + 유속: 동시 시작
+        const batchPromise = fetchBatchTide(stationCode, dateStr);
         const currentPromise = fetchCurrentData().catch(e => console.warn('[fetchAll] 유속 로딩 실패:', e));
 
-        // 물때 스피너: 고저조+유속 둘 다 완료 시 해제 (조위 그래프 무관)
-        Promise.allSettled([hlPromise, currentPromise]).then(() => {
-            if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
-        });
+        // 고저조 + 유속: 동시 시작 (batch 실패 시 개별 호출용 프리페치도 준비)
+        let hlPromise;
+        let predictionAPIs;
 
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
             await Promise.race([
                 (async () => {
-                    await hlPromise;
-                    await fetchTidePrediction(predictionAPIs);
+                    const batchResult = await batchPromise;
+
+                    if (batchResult && batchResult.hilo) {
+                        // batch 성공: hilo 데이터로 fetchTideHighLow 대체
+                        hlPromise = fetchTideHighLow(batchResult.hilo);
+                        await hlPromise;
+                    } else {
+                        // fallback: 개별 호출
+                        predictionAPIs = [
+                            apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+                            }),
+                            apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+                            }),
+                        ];
+                        hlPromise = fetchTideHighLow();
+                        await hlPromise;
+                    }
+
+                    // 점진적 렌더링: 고저조 보간 곡선으로 즉시 프리뷰 표시
+                    const hlData = window._hlData || [];
+                    if (hlData.length >= 2) {
+                        const interp = interpolateFromHiLo(hlData);
+                        const timeFilter = (lbl) => lbl >= '05:00' && lbl <= '18:00';
+                        const fIdx = interp.labels.map((l, i) => timeFilter(l) ? i : -1).filter(i => i >= 0);
+                        const fLabels = fIdx.map(i => interp.labels[i]);
+                        const fPredicted = fIdx.map(i => interp.predicted[i]);
+                        window._chartData = { labels: fLabels, predicted: fPredicted, actual: null, annotations: {} };
+                        renderTideChart(fLabels, fPredicted, null, {});
+                    }
+
+                    if (batchResult) {
+                        // batch 성공: survey/tideTime 데이터를 직접 전달
+                        const surveyItems = batchResult.survey || [];
+                        const tideTimeItems = batchResult.tideTime || [];
+                        await fetchTidePrediction([
+                            Promise.resolve(surveyItems),
+                            Promise.resolve(tideTimeItems),
+                        ]);
+                    } else {
+                        await fetchTidePrediction(predictionAPIs);
+                    }
                     renderCombinedChart();
                 })(),
                 timeout
@@ -1529,6 +1616,11 @@
             if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
         }
 
+        // 물때 스피너: 고저조+유속 둘 다 완료 시 해제 (조위 그래프 무관)
+        Promise.allSettled([hlPromise, currentPromise]).then(() => {
+            if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
+        });
+
         // 유속이 차트보다 늦게 도착하면 차트에 유속 라인 추가
         currentPromise.then(() => {
             if (chartLoadDone) renderCombinedChart();
@@ -1536,7 +1628,7 @@
     }
 
     // ==================== 1) 고저조 (tideFcstHghLw) ====================
-    async function fetchTideHighLow() {
+    async function fetchTideHighLow(prefetchedItems) {
         const summaryEl = document.getElementById('tideSummary');
         summaryEl.innerHTML = '<div class="loading"><div class="spinner"></div><div>고저조 데이터 로딩...</div></div>';
         setTideDataStamp('예보 생성시각 조회 중');
@@ -1545,7 +1637,7 @@
             const stationCode = getStation();
             const dateStr = getDateStr();
             window._fishingIndexInfo = null;
-            const items = await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
+            const items = prefetchedItems || await apiCall('tideFcstHghLw/GetTideFcstHghLwApiService', {
                 obsCode: stationCode,
                 reqDate: dateStr,
                 numOfRows: '20',
@@ -1876,11 +1968,23 @@
         tideChartReloading = true;
         setTideChartLoadStatus('loading');
         try {
+            // 프리페치: 고저조와 동시에 예측 API 2개 병렬 시작
+            const stationCode = getStation();
+            const dateStr = getDateStr();
+            const predictionAPIs = [
+                apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                    obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+                }),
+                apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                    obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+                }),
+            ];
+
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
             await Promise.race([
                 (async () => {
                     await fetchTideHighLow();
-                    await fetchTidePrediction();
+                    await fetchTidePrediction(predictionAPIs);
                     renderCombinedChart();
                 })(),
                 timeout
@@ -2207,10 +2311,8 @@
         try {
             const stationCode = getStation();
             const dateStr = getDateStr();
-            const geo = getActiveGeoPoint(stationCode);
-
             // prefetchedAPIs가 있으면 미리 시작된 API 결과를 대기, 없으면 직접 호출
-            const [surveyResult, tideBedResult, tideTimeResult] = await Promise.allSettled(
+            const [surveyResult, tideTimeResult] = await Promise.allSettled(
                 prefetchedAPIs || [
                     apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
                         obsCode: stationCode,
@@ -2219,13 +2321,6 @@
                         numOfRows: '300',
                         pageNo: '1'
                     }),
-                    geo ? apiCall('tidebed/GetTidebedApiService', {
-                        lat: geo.lat,
-                        lot: geo.lon,
-                        reqDate: dateStr,
-                        numOfRows: '300',
-                        pageNo: '1'
-                    }) : Promise.resolve([]),
                     apiCall('tideFcstTime/GetTideFcstTimeApiService', {
                         obsCode: stationCode,
                         reqDate: dateStr,
@@ -2237,7 +2332,6 @@
             );
 
             const items = surveyResult.status === 'fulfilled' ? surveyResult.value : [];
-            const tideBedItems = tideBedResult.status === 'fulfilled' ? tideBedResult.value : [];
             const tideTimeItems = tideTimeResult.status === 'fulfilled' ? tideTimeResult.value : [];
 
             const hlData = window._hlData || [];
@@ -2250,11 +2344,6 @@
                 predicted = interp.predicted;
             }
 
-            const tideBedMap = buildTimeSeriesMap(
-                tideBedItems,
-                ['predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime', 'obsrvnDt'],
-                ['obsrvnHgt', 'predcTdlvVl', 'bscTdlvHgt', 'tdlvHgt', 'tdlvVl', 'tideLevel']
-            );
             const tideTimeMap = buildTimeSeriesMap(
                 tideTimeItems,
                 ['predcDt', 'predcTm', 'predcTime', 'tm', 'dateTime'],
@@ -2262,16 +2351,11 @@
             );
 
             if (labels.length > 0) {
-                // 우선순위: tidebed(1분 예측) > tideFcstTime(시계열 예측) > 고저조 보간
+                // tideFcstTime(시계열 예측) > 고저조 보간
                 predicted = mergePredictedWithSeriesMap(labels, predicted, tideTimeMap);
-                predicted = mergePredictedWithSeriesMap(labels, predicted, tideBedMap);
             } else {
-                const fromBed = buildLabelsAndPredictedFromSeriesMap(tideBedMap);
                 const fromTime = buildLabelsAndPredictedFromSeriesMap(tideTimeMap);
-                if (fromBed.labels.length > 0) {
-                    labels = fromBed.labels;
-                    predicted = fromBed.predicted;
-                } else if (fromTime.labels.length > 0) {
+                if (fromTime.labels.length > 0) {
                     labels = fromTime.labels;
                     predicted = fromTime.predicted;
                 }
