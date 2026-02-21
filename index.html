@@ -265,6 +265,39 @@
 
         .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
 
+        /* #23 인라인 스타일 → CSS 클래스 추출 */
+        .unit-sm { font-size: 0.4em; }
+        .center-muted { text-align: center; color: var(--muted); padding: 20px; }
+        .species-detail-line { display: flex; align-items: center; gap: 3px; padding: 1px 8px 2px 22px; font-size: 0.72em; color: var(--muted); }
+        .species-card-row { display: flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 0.78em; }
+        .species-card-wrap { display: flex; flex-direction: column; }
+        .species-name { color: var(--text); font-weight: 600; }
+        .legend-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+        .legend-item-lg { display: flex; align-items: center; gap: 4px; }
+        .legend-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid #fff; flex-shrink: 0; }
+        .legend-line { width: 16px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+        .legend-line-lg { width: 18px; height: 3px; border-radius: 2px; flex-shrink: 0; }
+        .legend-line-xl { width: 20px; height: 3px; border-radius: 2px; }
+        .nav-btn-sm { padding: 0 10px; font-size: 0.9em; min-width: 0; height: 36px; }
+        .nav-label { font-size: 0.85em; color: var(--muted); }
+        .nav-col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+        .species-btn { padding: 4px 12px; border-radius: 16px; border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 0.78em; cursor: pointer; transition: all 0.2s; }
+        .current-info-header { margin-bottom: 10px; font-size: 0.82em; color: var(--muted); }
+        .current-scroll { max-height: 400px; overflow-y: auto; }
+        .current-info-row { display: flex; align-items: center; gap: 6px; }
+        .current-info-row + .current-info-row { margin-top: 4px; }
+        .current-info-label { font-size: 0.82em; font-weight: 700; min-width: 72px; }
+        .slack-zone-item { flex: 1; display: flex; align-items: center; justify-content: center; padding: 3px 10px; border-radius: 6px; }
+        .slack-time { font-size: 0.85em; color: var(--text); font-weight: 600; }
+        .info-sep { font-size: 0.78em; color: var(--muted); }
+        .species-info-box { padding: 10px 12px; border-radius: 10px; }
+        .species-info-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .species-info-title { font-weight: 700; font-size: 0.92em; }
+        .species-info-desc { font-size: 0.84em; color: var(--text); margin-bottom: 8px; font-weight: 500; }
+        .species-tip-list { display: flex; flex-direction: column; gap: 4px; }
+        .species-tip { font-size: 0.78em; padding: 3px 0; }
+        .err-detail { font-size: 0.8em; }
+
         @media (max-width: 600px) {
             .controls { flex-direction: column; }
             .control-group { min-width: 100%; }
@@ -339,28 +372,28 @@
         <div class="controls" style="margin-top:0;">
             <div class="control-group">
                 <div style="display:flex;align-items:flex-end;gap:4px;">
-                    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                        <span style="font-size:0.85em;color:var(--muted);">월</span>
+                    <div class="nav-col">
+                        <span class="nav-label">월</span>
                         <div style="display:flex;gap:4px;align-items:stretch;">
-                            <button class="btn" data-month-shift="-1" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;">◀</button>
-                            <button class="btn" data-month-shift="1" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;">▶</button>
+                            <button class="btn nav-btn-sm" data-month-shift="-1">◀</button>
+                            <button class="btn nav-btn-sm" data-month-shift="1">▶</button>
                         </div>
                     </div>
-                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;">
-                        <span style="font-size:0.85em;color:var(--muted);">날짜</span>
+                    <div class="nav-col" style="flex:1;min-width:0;">
+                        <span class="nav-label">날짜</span>
                         <div style="position:relative;width:100%;height:36px;">
                             <input type="date" id="dateInput" style="position:absolute;top:0;left:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;" />
                             <div id="dateDisplay" style="width:100%;height:36px;line-height:36px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:1em;text-align:center;cursor:pointer;position:relative;z-index:1;box-sizing:border-box;">2026년 02월 15일</div>
                         </div>
                     </div>
-                    <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
-                        <span style="font-size:0.85em;color:var(--muted);">일</span>
+                    <div class="nav-col">
+                        <span class="nav-label">일</span>
                         <div style="display:flex;gap:4px;align-items:stretch;">
-                            <button class="btn" id="btnPrev" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;">◀</button>
-                            <button class="btn" id="btnNext" style="padding:0 10px;font-size:0.9em;min-width:0;height:36px;">▶</button>
+                            <button class="btn nav-btn-sm" id="btnPrev">◀</button>
+                            <button class="btn nav-btn-sm" id="btnNext">▶</button>
                         </div>
                     </div>
-                    <button class="btn" id="btnToday" style="padding:0 12px;font-size:0.9em;min-width:0;height:36px;align-self:flex-end;">오늘</button>
+                    <button class="btn nav-btn-sm" id="btnToday" style="padding:0 12px;align-self:flex-end;">오늘</button>
                 </div>
             </div>
         </div>
@@ -390,7 +423,7 @@
             <div class="card" id="tideSummaryCard">
                 <div class="card-title">📊 고저조 정보</div>
                 <div id="tideDataStamp" class="tide-data-stamp">예보 생성시각 -</div>
-                <div id="tideSummary"><div style="text-align:center;color:var(--muted);padding:20px;">관측소와 날짜를 선택 후 조회하세요</div></div>
+                <div id="tideSummary"><div class="center-muted">관측소와 날짜를 선택 후 조회하세요</div></div>
             </div>
             <div class="card">
                 <div class="card-title" style="flex-wrap:wrap;gap:8px;">
@@ -403,14 +436,14 @@
                     </div>
                 </div>
                 <div class="species-btns" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-                    <button class="species-btn" data-species="none" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">어종 OFF</button>
-                    <button class="species-btn" data-species="jjukkumi" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 쭈꾸미</button>
-                    <button class="species-btn" data-species="gapoh" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🦑 갑오징어</button>
-                    <button class="species-btn" data-species="muneo" style="padding:4px 12px;border-radius:16px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.78em;cursor:pointer;transition:all 0.2s;">🐙 문어</button>
+                    <button class="species-btn" data-species="none">어종 OFF</button>
+                    <button class="species-btn" data-species="jjukkumi">🐙 쭈꾸미</button>
+                    <button class="species-btn" data-species="gapoh">🦑 갑오징어</button>
+                    <button class="species-btn" data-species="muneo">🐙 문어</button>
                 </div>
                 <div id="speciesLegend" style="display:none;margin-bottom:10px;padding:8px 12px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.8em;color:var(--muted);line-height:1.6;"></div>
-                <div id="tideLegend" style="display:none;margin-bottom:6px;font-size:0.75em;color:var(--muted);align-items:center;gap:10px;flex-wrap:wrap;"></div>
-                <div id="chartSlackInfo" style="display:none;font-size:0.65em;margin-bottom:4px;color:var(--muted);gap:4px;flex-wrap:wrap;align-items:center;letter-spacing:0.03em;"></div>
+                <div id="tideLegend" style="display:none;margin-bottom:6px;font-size:0.75em;color:var(--muted);gap:10px;flex-wrap:wrap;"></div>
+                <div id="chartSlackInfo" style="display:none;font-size:0.65em;margin-bottom:4px;color:var(--muted);gap:4px;flex-wrap:wrap;letter-spacing:0.03em;"></div>
                 <div class="chart-container" style="margin-right:-15px;"><canvas id="tideChart"></canvas></div>
             </div>
         </div>
@@ -419,7 +452,7 @@
         <div class="tab-content" id="tab-current">
             <div class="card">
                 <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">🌀 조류 정보 (유향/유속)<button type="button" class="current-unit-toggle-btn" title="클릭해서 cm/s와 k/n 단위를 전환" aria-label="유속 단위 전환"><span id="currentInfoUnitLabel">유속 (cm/s)</span><span class="unit-icon">⇄</span><span class="unit-hint">클릭 전환</span></button></div>
-                <div id="currentInfo"><div style="text-align:center;color:var(--muted);padding:20px;">조류 예보점과 날짜를 선택 후 조회하세요</div></div>
+                <div id="currentInfo"><div class="center-muted">조류 예보점과 날짜를 선택 후 조회하세요</div></div>
             </div>
             <div class="card">
                 <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">📈 조류 유속 그래프<span id="currentChartUnitLabel" style="font-size:0.98em;color:var(--muted);font-weight:400;">cm/s</span></div>
@@ -448,7 +481,7 @@
                     </div>
                 </div>
                 <div id="dischargeNotice">
-                    <div style="text-align:center;color:var(--muted);padding:20px;">방류 계획 알림을 불러오는 중...</div>
+                    <div class="center-muted">방류 계획 알림을 불러오는 중...</div>
                 </div>
                 <div style="margin-top:8px;font-size:0.7em;color:var(--muted);text-align:center;">
                     출처: <a href="https://rims.ekr.or.kr/awminfo/WsNoticeList.do" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:underline;">농촌용수종합정보시스템(RIMS)</a> · 30분 자동갱신

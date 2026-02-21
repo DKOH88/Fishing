@@ -654,7 +654,7 @@
         async function loadDischargeNotices(forceRefresh) {
             const container = document.getElementById('dischargeNotice');
             const updatedEl = document.getElementById('dischargeUpdatedAt');
-            container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;"><div class="spinner" style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;"></div><div style="margin-top:8px;">방류 알림 조회 중...</div></div>';
+            container.innerHTML = '<div class="center-muted"><div class="spinner" style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;"></div><div style="margin-top:8px;">방류 알림 조회 중...</div></div>';
 
             try {
                 let data;
@@ -683,7 +683,7 @@
                 const unseenNos = _getUnseenNos(data.newNos);
 
                 if (notices.length === 0) {
-                    container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">현재 방류 계획 알림이 없습니다.</div>';
+                    container.innerHTML = '<div class="center-muted">현재 방류 계획 알림이 없습니다.</div>';
                     if (updatedEl) updatedEl.textContent = '';
                     return;
                 }
@@ -738,7 +738,7 @@
                 }
             } catch (err) {
                 console.error('방류 알림 로드 실패:', err);
-                container.innerHTML = `<div class="error-msg">방류 알림을 불러올 수 없습니다.<br><span style="font-size:0.8em;">${err.message}</span></div>`;
+                container.innerHTML = `<div class="error-msg">방류 알림을 불러올 수 없습니다.<br><span class="err-detail">${err.message}</span></div>`;
             }
         }
 
@@ -1354,26 +1354,26 @@
                     if (jj && mn) {
                         const mergedBg = `${jj.color}15`;
                         const mergedBorder = `${jj.color}33`;
-                        html += `<div style="display:flex;flex-direction:column;">
-                        <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${mergedBg};border:1px solid ${mergedBorder};border-radius:6px;font-size:0.78em;flex-wrap:wrap;">
+                        html += `<div class="species-card-wrap">
+                        <div class="species-card-row" style="background:${mergedBg};border:1px solid ${mergedBorder};flex-wrap:wrap;">
                             <span>🐙</span>
-                            <span style="color:var(--text);font-weight:600;">쭈꾸미</span>
+                            <span class="species-name">쭈꾸미</span>
                             <span style="color:var(--muted);margin:0 2px;">·</span>
-                            <span style="color:var(--text);font-weight:600;">문어</span>
+                            <span class="species-name">문어</span>
                         </div>`;
-                        html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${jj.color};font-weight:600;">${jj.grade}</span> <span>${jj.desc}</span></div>`;
-                        if (jj.diffInfo) html += `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
+                        html += `<div class="species-detail-line">🌊 <span style="color:${jj.color};font-weight:600;">${jj.grade}</span> <span>${jj.desc}</span></div>`;
+                        if (jj.diffInfo) html += `<div class="species-detail-line">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
                         html += `</div>`;
                     }
                     // 갑오징어 별도 카드
                     if (go) {
-                        const diffLine = go.diffInfo ? `<div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">📏 <span style="color:${go.diffColor};font-weight:600;">${go.diffInfo.grade}</span> <span>${go.diffInfo.desc}</span></div>` : '';
-                        html += `<div style="display:flex;flex-direction:column;">
-                        <div style="display:flex;align-items:center;gap:4px;padding:3px 8px;background:${go.color}15;border:1px solid ${go.color}33;border-radius:6px;font-size:0.78em;">
+                        const diffLine = go.diffInfo ? `<div class="species-detail-line">📏 <span style="color:${go.diffColor};font-weight:600;">${go.diffInfo.grade}</span> <span>${go.diffInfo.desc}</span></div>` : '';
+                        html += `<div class="species-card-wrap">
+                        <div class="species-card-row" style="background:${go.color}15;border:1px solid ${go.color}33;">
                             <span>${go.emoji}</span>
-                            <span style="color:var(--text);font-weight:600;">${go.name}</span>
+                            <span class="species-name">${go.name}</span>
                         </div>
-                        <div style="display:flex;align-items:center;gap:3px;padding:1px 8px 2px 22px;font-size:0.72em;color:var(--muted);">🌊 <span style="color:${go.color};font-weight:600;">${go.grade}</span> <span>${go.desc}</span></div>${diffLine}</div>`;
+                        <div class="species-detail-line">🌊 <span style="color:${go.color};font-weight:600;">${go.grade}</span> <span>${go.desc}</span></div>${diffLine}</div>`;
                     }
                     return html;
                 })()}
@@ -1857,17 +1857,17 @@
                 <div class="tide-summary">
                     <div class="tide-item high">
                         <div class="label">최고조위</div>
-                        <div class="value">${maxHigh !== null ? maxHigh.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="value">${maxHigh !== null ? maxHigh.toFixed(0) : '-'}<small class="unit-sm"> cm</small></div>
                         <div class="time">${bestHigh ? bestHigh.predcDt.substring(11, 16) : '-'}</div>
                     </div>
                     <div class="tide-item low">
                         <div class="label">최저조위</div>
-                        <div class="value">${minLow !== null ? minLow.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="value">${minLow !== null ? minLow.toFixed(0) : '-'}<small class="unit-sm"> cm</small></div>
                         <div class="time">${bestLow ? bestLow.predcDt.substring(11, 16) : '-'}</div>
                     </div>
                     <div class="tide-item diff">
                         <div class="label">조차 (고저차)</div>
-                        <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small style="font-size:0.4em"> cm</small></div>
+                        <div class="value">${diff !== null ? diff.toFixed(0) : '-'}<small class="unit-sm"> cm</small></div>
                         <div class="time"></div>
                     </div>
                 </div>`;
@@ -2856,26 +2856,26 @@
 
         legendEl.style.display = '';
         legendEl.innerHTML = `
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div class="current-info-row" style="gap:8px;margin-bottom:6px;">
                 <span style="color:${cfg.color};font-weight:700;font-size:0.95em;">${cfg.legend}</span>
             </div>
             ${slackZones.length > 0 ? `
-            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-                <span style="font-size:0.82em;color:#ff5252;font-weight:700;min-width:72px;">⏸ 정조 구간</span>
-                <span style="font-size:0.78em;color:var(--muted);">|</span>
+            <div class="current-info-row" style="margin-top:6px;">
+                <span class="current-info-label" style="color:#ff5252;">⏸ 정조 구간</span>
+                <span class="info-sep">|</span>
                 ${slackZones.map(z => `
-                    <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:3px 10px;background:rgba(255,82,82,0.08);border-radius:6px;border-left:3px solid #ff5252;">
-                        <span style="font-size:0.85em;color:var(--text);font-weight:600;">${z.start}~${z.end}</span>
+                    <div class="slack-zone-item" style="background:rgba(255,82,82,0.08);border-left:3px solid #ff5252;">
+                        <span class="slack-time">${z.start}~${z.end}</span>
                     </div>
                 `).join('')}
             </div>` : ''}
             ${turnTimes.length > 0 ? `
-            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
-                <span style="font-size:0.82em;color:#4caf50;font-weight:700;min-width:72px;">🟢 물돌이</span>
-                <span style="font-size:0.78em;color:var(--muted);">|</span>
+            <div class="current-info-row" style="margin-top:4px;">
+                <span class="current-info-label" style="color:#4caf50;">🟢 물돌이</span>
+                <span class="info-sep">|</span>
                 ${turnTimes.map(t => `
-                    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:3px 10px;background:rgba(76,175,80,0.1);border-radius:6px;border-left:3px solid #4caf50;">
-                        <span style="font-size:0.85em;color:var(--text);font-weight:600;">${t.time}</span>
+                    <div class="slack-zone-item" style="gap:5px;background:rgba(76,175,80,0.1);border-left:3px solid #4caf50;">
+                        <span class="slack-time">${t.time}</span>
                         <span style="font-size:0.72em;color:${t.type === '들물' ? '#4fc3f7' : '#ff8a65'};font-weight:600;">→${t.type}</span>
                     </div>
                 `).join('')}
@@ -2925,16 +2925,16 @@
 
         infoEl.style.display = '';
         infoEl.innerHTML = `
-            <div style="padding:10px 12px;background:${cfg.color}08;border:1px solid ${cfg.color}25;border-radius:10px;">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <div class="species-info-box" style="background:${cfg.color}08;border:1px solid ${cfg.color}25;">
+                <div class="species-info-header">
                     <span style="font-size:1.3em;">${cfg.emoji}</span>
-                    <span style="font-weight:700;color:${cfg.color};font-size:0.92em;">${cfg.name} · 오늘 ${mulddae.num} (${mulddae.name} ${mulddae.pct}%)</span>
+                    <span class="species-info-title" style="color:${cfg.color};">${cfg.name} · 오늘 ${mulddae.num} (${mulddae.name} ${mulddae.pct}%)</span>
                 </div>
-                <div style="font-size:0.84em;color:var(--text);margin-bottom:8px;font-weight:500;">${suit.mulddaeDesc}</div>
-                <div style="display:flex;flex-direction:column;gap:4px;">
-                    <div style="font-size:0.78em;color:var(--muted);padding:3px 0;border-top:1px solid ${cfg.color}15;">${tips.slackTip}</div>
-                    <div style="font-size:0.78em;color:#ffa726;">${tips.turnTip}</div>
-                    <div style="font-size:0.78em;color:var(--muted);">${tips.rigTip}</div>
+                <div class="species-info-desc">${suit.mulddaeDesc}</div>
+                <div class="species-tip-list">
+                    <div class="species-tip" style="color:var(--muted);border-top:1px solid ${cfg.color}15;">${tips.slackTip}</div>
+                    <div class="species-tip" style="color:#ffa726;">${tips.turnTip}</div>
+                    <div class="species-tip" style="color:var(--muted);">${tips.rigTip}</div>
                 </div>
             </div>`;
     }
@@ -3218,19 +3218,19 @@
             const hasSunInfo = !!(sunriseTime || sunsetTime);
             let html = '';
             if (_isFuture) {
-                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:rgba(148,163,184,0.5);border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
+                html += '<span class="legend-item-lg"><span class="legend-line-lg" style="background:rgba(148,163,184,0.5);"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
             } else {
-                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:#4fc3f7;border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
+                html += '<span class="legend-item-lg"><span class="legend-line-lg" style="background:#4fc3f7;"></span><span style="color:#7a8ba3;">실측 조위</span></span>';
                 if (_tideNowIdx >= 0) {
-                    html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:18px;height:3px;background:rgba(148,163,184,0.5);border-radius:2px;flex-shrink:0;"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
+                    html += '<span class="legend-item-lg"><span class="legend-line-lg" style="background:rgba(148,163,184,0.5);"></span><span style="color:#7a8ba3;">예측 조위</span></span>';
                 }
             }
             if (hasNow) {
-                html += '<span style="display:flex;align-items:center;gap:4px;"><span style="width:8px;height:8px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
+                html += '<span class="legend-item-lg"><span class="legend-dot" style="width:8px;height:8px;background:#ffeb3b;"></span><span style="color:#ffeb3b;">현재 위치</span></span>';
             }
             if (hasSunInfo) {
                 const sunLabel = `${sunriseTime ? `일출 ${sunriseTime}` : ''}${(sunriseTime && sunsetTime) ? ' | ' : ''}${sunsetTime ? `일몰 ${sunsetTime}` : ''}`;
-                html += `<span style="display:flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;background:#ffb74d;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffb74d;">${sunLabel}</span></span>`;
+                html += `<span class="legend-item-lg"><span class="legend-dot" style="background:#ffb74d;"></span><span style="color:#ffb74d;">${sunLabel}</span></span>`;
             }
             tideLegendEl.innerHTML = html;
             tideLegendEl.style.display = 'flex';
@@ -3528,11 +3528,11 @@
             : '';
 
         el.innerHTML = `
-            <div style="margin-bottom:10px;font-size:0.82em;color:var(--muted);">
+            <div class="current-info-header">
                 예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong> ·
                 ${items[0]?.__timeLabel || '00:00'}~${items[items.length - 1]?.__timeLabel || '00:00'} 기준 <span style="font-size:0.9em">(총 ${items.length}건 · 10분 간격)</span>${fldEbbLine}${areaLine}
             </div>
-            <div style="max-height:400px;overflow-y:auto;">
+            <div class="current-scroll">
             <table class="current-table">
                 <thead><tr><th>시간</th><th>유향</th><th class="current-speed-col">유속</th><th>세기</th></tr></thead>
                 <tbody>
@@ -4039,14 +4039,14 @@
         if (legendEl) {
             let html = '';
             if (_isCombinedFuture) {
-                if (hasTide) html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:20px;height:3px;background:rgba(56,189,248,0.2);border-radius:2px;"></span><span style="color:rgba(56,189,248,0.5);font-weight:500;">예측조위</span></span>';
-                if (hasSpeed) html += '<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:20px;height:3px;background:rgba(52,211,153,0.2);border-radius:2px;"></span><span style="color:rgba(52,211,153,0.5);font-weight:500;">예측유속</span></span>';
+                if (hasTide) html += '<span class="legend-item" style="gap:5px;"><span class="legend-line-xl" style="background:rgba(56,189,248,0.2);"></span><span style="color:rgba(56,189,248,0.5);font-weight:500;">예측조위</span></span>';
+                if (hasSpeed) html += '<span class="legend-item" style="gap:5px;"><span class="legend-line-xl" style="background:rgba(52,211,153,0.2);"></span><span style="color:rgba(52,211,153,0.5);font-weight:500;">예측유속</span></span>';
             } else {
-                if (hasTide) html += '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><span style="width:16px;height:3px;background:#38bdf8;border-radius:2px;flex-shrink:0;"></span><span style="color:#38bdf8;font-weight:500;">실측조위</span></span>';
-                if (hasSpeed) html += '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><span style="width:16px;height:3px;background:#34d399;border-radius:2px;flex-shrink:0;"></span><span style="color:#34d399;font-weight:500;">실측유속</span></span>';
-                if (hasNowSplit && hasTide) html += '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><span style="width:16px;height:3px;background:rgba(56,189,248,0.2);border-radius:2px;flex-shrink:0;"></span><span style="color:rgba(56,189,248,0.5);font-weight:500;">예측조위</span></span>';
-                if (hasNowSplit && hasSpeed) html += '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><span style="width:16px;height:3px;background:rgba(52,211,153,0.2);border-radius:2px;flex-shrink:0;"></span><span style="color:rgba(52,211,153,0.5);font-weight:500;">예측유속</span></span>';
-                if (annotations['now_point'] || annotations['now_line']) html += '<span style="display:inline-flex;align-items:center;gap:3px;white-space:nowrap;"><span style="width:7px;height:7px;background:#ffeb3b;border-radius:50%;border:1px solid #fff;flex-shrink:0;"></span><span style="color:#ffeb3b;font-weight:500;">현재위치</span></span>';
+                if (hasTide) html += '<span class="legend-item"><span class="legend-line" style="background:#38bdf8;"></span><span style="color:#38bdf8;font-weight:500;">실측조위</span></span>';
+                if (hasSpeed) html += '<span class="legend-item"><span class="legend-line" style="background:#34d399;"></span><span style="color:#34d399;font-weight:500;">실측유속</span></span>';
+                if (hasNowSplit && hasTide) html += '<span class="legend-item"><span class="legend-line" style="background:rgba(56,189,248,0.2);"></span><span style="color:rgba(56,189,248,0.5);font-weight:500;">예측조위</span></span>';
+                if (hasNowSplit && hasSpeed) html += '<span class="legend-item"><span class="legend-line" style="background:rgba(52,211,153,0.2);"></span><span style="color:rgba(52,211,153,0.5);font-weight:500;">예측유속</span></span>';
+                if (annotations['now_point'] || annotations['now_line']) html += '<span class="legend-item"><span class="legend-dot" style="background:#ffeb3b;"></span><span style="color:#ffeb3b;font-weight:500;">현재위치</span></span>';
             }
             legendEl.innerHTML = html;
         }
