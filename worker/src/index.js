@@ -1019,12 +1019,12 @@ async function handleDischargeNotice(ctx, request) {
     const result = { notices: rows, fetchedAt: new Date().toISOString() };
     const jsonBody = JSON.stringify(result);
 
-    // 10분 캐시 저장
+    // 30분 캐시 저장 (방류 공지는 자주 변하지 않음)
     const cacheResp = new Response(jsonBody, {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=600',
+        'Cache-Control': 'public, max-age=1800',
       },
     });
     ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));

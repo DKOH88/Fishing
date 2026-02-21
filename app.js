@@ -589,15 +589,43 @@
             return keywords.some(kw => title.includes(kw));
         }
 
-        async function loadDischargeNotices() {
+        // 방류 데이터 fetch (캐시 → 프리페치 Promise → 네트워크)
+        const DISCHARGE_CACHE_KEY = 'discharge-notice-v1';
+        const DISCHARGE_CACHE_TTL = 30 * 60 * 1000; // 30분
+
+        function _fetchDischargeData() {
+            return fetch(`${API_BASE}/api/discharge-notice`)
+                .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); });
+        }
+
+        // 페이지 로드 시 백그라운드 프리페치 (await 없이 fire-and-forget)
+        if (!_getClientCache(DISCHARGE_CACHE_KEY)) {
+            window._dischargePrefetch = _fetchDischargeData();
+        }
+
+        async function loadDischargeNotices(forceRefresh) {
             const container = document.getElementById('dischargeNotice');
             const updatedEl = document.getElementById('dischargeUpdatedAt');
             container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;"><div class="spinner" style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;"></div><div style="margin-top:8px;">방류 알림 조회 중...</div></div>';
 
             try {
-                const resp = await fetch(`${API_BASE}/api/discharge-notice`);
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const data = await resp.json();
+                let data;
+                // 1) sessionStorage 캐시
+                if (!forceRefresh) {
+                    const cached = _getClientCache(DISCHARGE_CACHE_KEY);
+                    if (cached) { data = cached; }
+                }
+                // 2) 프리페치 Promise 활용
+                if (!data && window._dischargePrefetch) {
+                    data = await window._dischargePrefetch;
+                    window._dischargePrefetch = null;
+                }
+                // 3) 네트워크 fetch
+                if (!data) {
+                    data = await _fetchDischargeData();
+                }
+                // sessionStorage에 저장
+                _setClientCache(DISCHARGE_CACHE_KEY, data, DISCHARGE_CACHE_TTL);
                 const notices = data.notices || [];
 
                 window._dischargeLoaded = true;
@@ -655,23 +683,23 @@
             }
         }
 
-        // 새로고침 버튼
+        // 새로고침 버튼 (강제 갱신)
         document.getElementById('dischargeReloadBtn')?.addEventListener('click', () => {
             window._dischargeLoaded = false;
-            loadDischargeNotices();
+            loadDischargeNotices(true);
         });
 
-        // 10분 자동 갱신
+        // 30분 자동 갱신 (캐시 TTL과 동일)
         setInterval(() => {
             // 방류 탭이 활성화되어 있으면 자동 갱신
             const dischargeTab = document.getElementById('tab-discharge');
             if (dischargeTab && dischargeTab.classList.contains('active')) {
-                loadDischargeNotices();
+                loadDischargeNotices(true);
             } else {
                 // 비활성 상태면 다음 진입 시 새로 로드하도록 플래그 리셋
                 window._dischargeLoaded = false;
             }
-        }, 10 * 60 * 1000);
+        }, 30 * 60 * 1000);
 
         // 검색 이벤트
         const searchInput = document.getElementById('searchInput');
