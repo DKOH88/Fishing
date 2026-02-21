@@ -193,11 +193,39 @@
         .mulddae-pct-bar { display: block; width: 100%; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
         .mulddae-pct-bar-fill { height: 100%; border-radius: 4px; }
         .mulddae-desc { font-size: 0.85em; color: var(--muted); }
-        .fishing-index-wrap { font-size: 0.76em; margin: 4px 0; position: relative; display: inline-block; }
+        .fishing-weather-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
+        .fishing-index-wrap { font-size: 0.76em; position: relative; display: inline-block; }
         .fishing-index-btn { color: #8fc4ff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); border-radius: 16px; padding: 3px 10px; font-size: 0.88em; transition: all 0.2s; }
         .fishing-index-btn:hover { color: #b8daff; background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.5); }
         .fishing-index-btn::after { content: '▾'; font-size: 0.7em; margin-left: 2px; opacity: 0.6; }
         .fishing-popup { position: absolute; left: 0; top: 110%; z-index: 100; background: #1a2a44; border: 1px solid #2a4a6f; border-radius: 8px; padding: 10px 14px; font-size: 0.95em; color: #c8ddf0; line-height: 1.7; white-space: nowrap; box-shadow: 0 4px 16px rgba(0,0,0,0.4); }
+
+        /* 날씨 위젯 */
+        .weather-widget {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: linear-gradient(135deg, rgba(255,180,50,0.12), rgba(255,120,30,0.08));
+            border: 1px solid rgba(255,180,50,0.25);
+            border-radius: 20px; padding: 4px 12px 4px 6px;
+            animation: weatherFadeIn 0.6s ease-out;
+            transition: all 0.3s ease;
+        }
+        .weather-widget:hover {
+            background: linear-gradient(135deg, rgba(255,180,50,0.22), rgba(255,120,30,0.15));
+            border-color: rgba(255,180,50,0.45);
+            transform: translateY(-1px);
+            box-shadow: 0 3px 12px rgba(255,160,40,0.15);
+        }
+        .weather-widget-icon {
+            width: 30px; height: 30px;
+            filter: drop-shadow(0 1px 3px rgba(255,180,50,0.3));
+            animation: weatherIconPulse 3s ease-in-out infinite;
+        }
+        .weather-widget-text { display: flex; flex-direction: column; line-height: 1.1; }
+        .weather-widget-label { font-size: 0.58em; color: rgba(255,200,100,0.7); letter-spacing: 0.5px; }
+        .weather-widget-temp { font-size: 0.88em; font-weight: 700; color: #ffcc66; text-shadow: 0 0 8px rgba(255,200,80,0.3); }
+        @keyframes weatherFadeIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+        @keyframes weatherIconPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
         .mulddae-species { display: flex; gap: 6px; flex-wrap: wrap; }
 
         @media (max-width: 600px) {
@@ -296,7 +324,6 @@
                         </div>
                     </div>
                     <button class="btn" id="btnToday" style="padding:0 12px;font-size:0.9em;min-width:0;height:36px;align-self:flex-end;">오늘</button>
-                    <span id="weatherIcon" style="display:none;align-self:flex-end;height:36px;align-items:center;justify-content:center;cursor:help;"></span>
                 </div>
             </div>
         </div>

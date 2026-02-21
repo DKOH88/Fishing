@@ -389,26 +389,32 @@
         const port = window._selectedPort;
         if (!port) return;
         const { nx, ny } = latLonToGrid(port.lat, port.lon);
-        const el = document.getElementById('weatherIcon');
-        if (!el) return;
 
         try {
             const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}`);
             if (!resp.ok) throw new Error('API error');
             const data = await resp.json();
-            if (!data.sky) { el.style.display = 'none'; return; }
+            if (!data.sky) { window._weatherInfo = null; return; }
 
             // 주간/야간 판정 (06~18시 주간)
             const hour = data.fcstTime ? parseInt(data.fcstTime.slice(0, 2)) : new Date().getHours();
             const isNight = hour < 6 || hour >= 18;
             const iconFile = getWeatherIconFile(data.sky, data.pty, isNight);
 
-            el.innerHTML = `<img src="moon/weather/${iconFile}" alt="날씨" style="width:28px;height:28px;vertical-align:middle;">`;
-            el.title = `${data.tmp || ''}°C`;
-            el.style.display = 'inline-flex';
+            window._weatherInfo = {
+                iconFile,
+                tmp: data.tmp || '--',
+                sky: data.sky,
+                pty: data.pty,
+                isNight
+            };
+            // 물때 카드가 이미 렌더된 상태라면 갱신
+            if (typeof renderMulddaeCardFromState === 'function') {
+                renderMulddaeCardFromState();
+            }
         } catch (e) {
             console.warn('[weather] load failed:', e);
-            el.style.display = 'none';
+            window._weatherInfo = null;
         }
     }
 
@@ -1222,7 +1228,20 @@
                 </div>
             </div>
             <div class="mulddae-desc">${desc}</div>
-            ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
+            <div class="fishing-weather-row">
+                ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : '<div></div>'}
+                ${(() => {
+                    const w = window._weatherInfo;
+                    if (!w) return '';
+                    return `<div class="weather-widget">
+                        <img src="moon/weather/${w.iconFile}" alt="날씨" class="weather-widget-icon">
+                        <div class="weather-widget-text">
+                            <span class="weather-widget-label">오늘의 날씨</span>
+                            <span class="weather-widget-temp">${w.tmp}°</span>
+                        </div>
+                    </div>`;
+                })()}
+            </div>
             <div class="mulddae-species">
                 ${(() => {
                     // 쭈꾸미·문어는 한 줄로 합침
