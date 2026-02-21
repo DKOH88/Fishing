@@ -550,7 +550,7 @@
                     html += '</tr>';
                     if (hasContent) {
                         html += `<tr class="discharge-content-row" id="discharge-content-${i}">`;
-                        html += `<td colspan="2" class="discharge-content">${n.content}</td>`;
+                        html += `<td colspan="2" class="discharge-content">${n.content.replace(/\n\n+/g, '<br><br>').replace(/\n/g, ' ')}</td>`;
                         html += '</tr>';
                     }
                 }
