@@ -1,6 +1,6 @@
 == Commit Log ==
 
-✅ 8711e3a — 유속% crsp 직접 정규화 전환: 조차 간접 추정 → 유속 데이터 ±15일 윈도우 정규화 + Worker /api/current-window 엔드포인트 추가
+✅ 11231d9 — 유속% crsp 직접 정규화 전환: 조차 간접 추정 → 유속 데이터 ±15일 윈도우 정규화 + Worker /api/current-window 엔드포인트 추가
 ✅ 3aac9b5 — 유속% 계산 단순화: p10/p90 동적 정규화 → MIN/MAX 고정 정규화 + 갑오징어 규칙 실측 보정
 ✅ 56a0b62 — 보안 강화: CSP unsafe-inline 제거, 듀얼 윈도우 rate limiter 적용
 (Turnstile 토큰 검증 — Worker에서 Cloudflare Turnstile 토큰을 검증하여 브라우저가 아닌 요청 차단은 삭제)
