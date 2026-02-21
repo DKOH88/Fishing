@@ -1473,12 +1473,42 @@
         _setNavLoading(true);
         let chartLoadDone = false;
         setTideChartLoadStatus('loading');
+
+        // 물때 스피너: 고저조+유속만 연동 (조위 그래프와 독립)
+        const mulddaeBtn = document.getElementById('mulddaeReloadBtn');
+        if (mulddaeBtn) { mulddaeBtn.disabled = true; mulddaeBtn.classList.add('is-spinning'); }
+
+        // 조위예보 API 3개를 고저조와 동시에 미리 시작 (네트워크 대기 시간 겹침)
+        const stationCode = getStation();
+        const dateStr = getDateStr();
+        const geo = getActiveGeoPoint(stationCode);
+        const predictionAPIs = [
+            apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+            }),
+            geo ? apiCall('tidebed/GetTidebedApiService', {
+                lat: geo.lat, lot: geo.lon, reqDate: dateStr, numOfRows: '300', pageNo: '1'
+            }) : Promise.resolve([]),
+            apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                obsCode: stationCode, reqDate: dateStr, min: '10', numOfRows: '300', pageNo: '1'
+            }),
+        ];
+
+        // 고저조 + 유속: 동시 시작
+        const hlPromise = fetchTideHighLow();
+        const currentPromise = fetchCurrentData().catch(e => console.warn('[fetchAll] 유속 로딩 실패:', e));
+
+        // 물때 스피너: 고저조+유속 둘 다 완료 시 해제 (조위 그래프 무관)
+        Promise.allSettled([hlPromise, currentPromise]).then(() => {
+            if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
+        });
+
         try {
             const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('요청 시간 초과')), 30000));
             await Promise.race([
                 (async () => {
-                    await Promise.all([fetchTideHighLow(), fetchCurrentData()]);
-                    await fetchTidePrediction();
+                    await hlPromise;
+                    await fetchTidePrediction(predictionAPIs);
                     renderCombinedChart();
                 })(),
                 timeout
@@ -1495,7 +1525,14 @@
         finally {
             if (chartLoadDone) setTideChartLoadStatus('done');
             _setNavLoading(false);
+            // 에러 시에도 물때 스피너 확실히 해제
+            if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
         }
+
+        // 유속이 차트보다 늦게 도착하면 차트에 유속 라인 추가
+        currentPromise.then(() => {
+            if (chartLoadDone) renderCombinedChart();
+        });
     }
 
     // ==================== 1) 고저조 (tideFcstHghLw) ====================
@@ -1831,13 +1868,7 @@
             btn.disabled = isLoading;
             btn.classList.toggle('is-spinning', isLoading);
         }
-        // 물때 새로고침 버튼도 연동
-        const mulddaeBtn = document.getElementById('mulddaeReloadBtn');
-        if (mulddaeBtn) {
-            const isLoading = state === 'loading';
-            mulddaeBtn.disabled = isLoading;
-            mulddaeBtn.classList.toggle('is-spinning', isLoading);
-        }
+        // 물때 새로고침 버튼은 fetchAll()에서 직접 제어 (카드 로딩 완료 시 즉시 해제)
     }
 
     async function refreshTideChart() {
@@ -2172,36 +2203,38 @@
         };
     }
 
-    async function fetchTidePrediction() {
+    async function fetchTidePrediction(prefetchedAPIs) {
         try {
             const stationCode = getStation();
             const dateStr = getDateStr();
             const geo = getActiveGeoPoint(stationCode);
 
-            // 3개 API 병렬 호출 (순차→병렬: ~1초 단축)
-            const [surveyResult, tideBedResult, tideTimeResult] = await Promise.allSettled([
-                apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
-                    obsCode: stationCode,
-                    reqDate: dateStr,
-                    min: '10',
-                    numOfRows: '300',
-                    pageNo: '1'
-                }),
-                geo ? apiCall('tidebed/GetTidebedApiService', {
-                    lat: geo.lat,
-                    lot: geo.lon,
-                    reqDate: dateStr,
-                    numOfRows: '300',
-                    pageNo: '1'
-                }) : Promise.resolve([]),
-                apiCall('tideFcstTime/GetTideFcstTimeApiService', {
-                    obsCode: stationCode,
-                    reqDate: dateStr,
-                    min: '10',
-                    numOfRows: '300',
-                    pageNo: '1'
-                }),
-            ]);
+            // prefetchedAPIs가 있으면 미리 시작된 API 결과를 대기, 없으면 직접 호출
+            const [surveyResult, tideBedResult, tideTimeResult] = await Promise.allSettled(
+                prefetchedAPIs || [
+                    apiCall('surveyTideLevel/GetSurveyTideLevelApiService', {
+                        obsCode: stationCode,
+                        reqDate: dateStr,
+                        min: '10',
+                        numOfRows: '300',
+                        pageNo: '1'
+                    }),
+                    geo ? apiCall('tidebed/GetTidebedApiService', {
+                        lat: geo.lat,
+                        lot: geo.lon,
+                        reqDate: dateStr,
+                        numOfRows: '300',
+                        pageNo: '1'
+                    }) : Promise.resolve([]),
+                    apiCall('tideFcstTime/GetTideFcstTimeApiService', {
+                        obsCode: stationCode,
+                        reqDate: dateStr,
+                        min: '10',
+                        numOfRows: '300',
+                        pageNo: '1'
+                    }),
+                ]
+            );
 
             const items = surveyResult.status === 'fulfilled' ? surveyResult.value : [];
             const tideBedItems = tideBedResult.status === 'fulfilled' ? tideBedResult.value : [];
