@@ -809,6 +809,104 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
   return results;
 }
 
+// ==================== 방류/급수 알림 크롤링 (discharge-notice) ====================
+
+async function handleDischargeNotice(ctx, request) {
+  // 10분 캐시
+  const cache = caches.default;
+  const cacheKey = new Request('https://cache.internal/discharge-notice', { method: 'GET' });
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    // 캐시된 응답에 현재 요청의 CORS 헤더 적용
+    const body = await cached.text();
+    return new Response(body, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
+    });
+  }
+
+  try {
+    // 최대 5페이지까지 크롤링하여 '방류' 글 수집
+    const MAX_PAGES = 5;
+    const rows = [];
+
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const rimsUrl = 'https://rims.ekr.or.kr/awminfo/WsNoticeList.do';
+      const formBody = `pageIndex=${page}`;
+      const resp = await fetch(rimsUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody,
+      });
+      if (!resp.ok) break;
+
+      const html = await resp.text();
+
+      // 테이블 행 파싱: <tr> 내부의 <td> 추출
+      const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let trMatch;
+      while ((trMatch = trRe.exec(html)) !== null) {
+        const trHtml = trMatch[1];
+        const tds = [];
+        const tdRe = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+        let tdMatch;
+        while ((tdMatch = tdRe.exec(trHtml)) !== null) {
+          tds.push(tdMatch[1].trim());
+        }
+        if (tds.length >= 5) {
+          const titleHtml = tds[1];
+          const titleTextMatch = titleHtml.match(/>([^<]+)<\/a>/);
+          const seqMatch = titleHtml.match(/searchNoticeDetail\((\d+)\)/);
+          const title = titleTextMatch ? titleTextMatch[1].trim() : titleHtml.replace(/<[^>]+>/g, '').trim();
+          const seq = seqMatch ? seqMatch[1] : null;
+
+          // '방류'가 제목에 포함된 글만 수집
+          if (!title || !title.includes('방류')) continue;
+
+          const no = tds[0].replace(/<[^>]+>/g, '').trim();
+          if (!/^\d+$/.test(no)) continue;
+
+          rows.push({
+            no: parseInt(no, 10),
+            title,
+            region: tds[3].replace(/<[^>]+>/g, '').trim(),
+            date: tds[4].replace(/<[^>]+>/g, '').trim(),
+            seq,
+            link: seq ? `https://rims.ekr.or.kr/awminfo/WsNoticeListSub.do?seq=${seq}` : null,
+          });
+        }
+      }
+    }
+
+    const result = { notices: rows, fetchedAt: new Date().toISOString() };
+    const jsonBody = JSON.stringify(result);
+
+    // 10분 캐시 저장
+    const cacheResp = new Response(jsonBody, {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'public, max-age=600',
+      },
+    });
+    ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));
+
+    return new Response(jsonBody, {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Failed to fetch discharge notices', detail: err.message }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', ...getCorsHeaders(request) },
+    });
+  }
+}
+
 // ==================== 유속 윈도우 (current-window) ====================
 
 async function handleCurrentWindowRequest(url, env, ctx, request) {
@@ -1101,6 +1199,11 @@ export default {
       return handleCurrentWindowRequest(url, env, ctx, request);
     }
 
+    // 방류/급수 알림 크롤링: GET /api/discharge-notice
+    if (url.pathname === '/api/discharge-notice') {
+      return handleDischargeNotice(ctx, request);
+    }
+
     // KHOA 좌표 기반 API 라우팅: GET /api/khoa/{endpoint}
     const khoaMatch = url.pathname.match(/^\/api\/khoa\/(current-point|current-area)$/);
     if (khoaMatch) {
@@ -1118,6 +1221,7 @@ export default {
           '/api/current-window',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',
+          '/api/discharge-notice',
           '/api/lunar',
           '/api/visitor'
         ]

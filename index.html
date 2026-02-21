@@ -141,6 +141,22 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
 
+        /* 방류 알림 테이블 */
+        .discharge-table { width: 100%; border-collapse: collapse; }
+        .discharge-table th { text-align: center; padding: 8px 6px; font-size: 0.78em; color: var(--muted); border-bottom: 1px solid var(--border); }
+        .discharge-table td { padding: 8px 6px; font-size: 0.85em; border-bottom: 1px solid rgba(255,255,255,0.04); }
+        .discharge-table th:nth-child(1) { width: 42px; text-align: center; }
+        .discharge-table td:nth-child(1) { text-align: center; color: var(--muted); font-size: 0.78em; }
+        .discharge-table th:nth-child(3) { width: 72px; text-align: center; }
+        .discharge-table td:nth-child(3) { text-align: center; font-size: 0.78em; color: var(--muted); }
+        .discharge-table th:nth-child(4) { width: 82px; text-align: center; }
+        .discharge-table td:nth-child(4) { text-align: center; font-size: 0.78em; color: var(--muted); }
+        .discharge-table td a { color: var(--text); text-decoration: none; }
+        .discharge-table td a:hover { color: var(--primary); text-decoration: underline; }
+        .discharge-table tr.discharge-highlight { background: rgba(79,195,247,0.08); }
+        .discharge-table tr.discharge-highlight td { color: var(--primary); }
+        .discharge-table tr.discharge-highlight td a { color: var(--primary); font-weight: 600; }
+
         /* 검색 바 */
         .search-bar { position: relative; margin-bottom: 16px; }
         .search-bar input { width: 100%; padding: 12px 16px 12px 40px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.95em; outline: none; }
@@ -294,6 +310,7 @@
             <button class="tab-btn active" data-tab="tide">물때/조위</button>
             <button class="tab-btn" data-tab="current">조류 유속</button>
             <button class="tab-btn" data-tab="combined">조위-유속 그래프</button>
+            <button class="tab-btn" data-tab="discharge">방류계획</button>
         </div>
 
         <!-- Tide Tab -->
@@ -350,6 +367,25 @@
                 <div id="combinedChartLegend" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:2px;padding:3px 6px;background:rgba(255,255,255,0.03);border-radius:8px;font-size:0.75em;color:var(--muted);align-items:center;"></div>
                 <div class="chart-container" style="height:380px;"><canvas id="combinedChart"></canvas></div>
                 <div id="combinedChartInfo" style="margin-top:10px;font-size:0.76em;color:var(--muted);text-align:center;letter-spacing:0.02em;"></div>
+            </div>
+        </div>
+
+        <!-- Discharge Tab -->
+        <div class="tab-content" id="tab-discharge">
+            <div class="card">
+                <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;">
+                    🚰 방류 계획 알림
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span id="dischargeUpdatedAt" style="font-size:0.72em;color:var(--muted);font-weight:400;"></span>
+                        <button type="button" id="dischargeReloadBtn" class="tide-chart-reload-btn" aria-label="방류 알림 새로고침" title="방류 알림 새로고침">↻</button>
+                    </div>
+                </div>
+                <div id="dischargeNotice">
+                    <div style="text-align:center;color:var(--muted);padding:20px;">방류 계획 알림을 불러오는 중...</div>
+                </div>
+                <div style="margin-top:8px;font-size:0.7em;color:var(--muted);text-align:right;">
+                    출처: <a href="https://rims.ekr.or.kr/awminfo/WsNoticeList.do" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:underline;">농촌용수종합정보시스템(RIMS)</a> · 10분 자동갱신
+                </div>
             </div>
         </div>
 

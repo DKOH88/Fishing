@@ -485,8 +485,129 @@
                 document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
                 document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+                // 방류 탭 최초 진입 시 로드
+                if (btn.dataset.tab === 'discharge' && !window._dischargeLoaded) {
+                    loadDischargeNotices();
+                }
             });
         });
+
+        // ==================== 방류 계획 알림 ====================
+        // 지사명 → 지역 매핑 (FISHING_PORTS.region과 대응)
+        const JISA_REGION_MAP = {
+            '당진': '충남', '서산': '충남', '태안': '충남', '보령': '충남', '서천': '충남',
+            '홍성': '충남', '예산': '충남', '아산': '충남', '천안': '충남', '논산': '충남',
+            '부여': '충남', '공주': '충남', '청양': '충남', '세종': '충남',
+            '평택': '경기', '화성': '경기', '수원': '경기', '여주': '경기', '이천': '경기',
+            '양평': '경기', '광주': '경기', '연천': '경기', '포천': '경기', '가평': '경기',
+            '파주': '경기', '고양': '경기', '강화': '경기', '옹진': '경기', '김포': '경기', '안성': '경기',
+            '홍천': '강원', '춘천': '강원', '원주': '강원', '강릉': '강원', '속초': '강원',
+            '고성': '강원', '양양': '강원', '철원': '강원', '화천': '강원', '동해': '강원',
+            '보은': '충북', '충주': '충북', '제천': '충북', '단양': '충북', '청주': '충북',
+            '진천': '충북', '괴산': '충북', '증평': '충북', '음성': '충북', '옥천': '충북', '영동': '충북',
+            '남원': '전북', '순창': '전북', '동진': '전북', '군산': '전북', '익산': '전북',
+            '전주': '전북', '완주': '전북', '임실': '전북', '고창': '전북', '정읍': '전북', '부안': '전북',
+            '순천': '전남', '광양': '전남', '여수': '전남', '강진': '전남', '목포': '전남',
+            '무안': '전남', '신안': '전남', '곡성': '전남', '구례': '전남', '고흥': '전남',
+            '보성': '전남', '화순': '전남', '장흥': '전남', '해남': '전남', '완도': '전남',
+            '영암': '전남', '영광': '전남', '진도': '전남', '나주': '전남', '담양': '전남',
+            '함평': '전남', '장성': '전남',
+            '안동': '경북', '칠곡': '경북', '구미': '경북', '김천': '경북', '예천': '경북',
+            '영주': '경북', '봉화': '경북', '달성': '경북', '의성': '경북', '군위': '경북',
+            '영덕': '경북', '울진': '경북', '포항': '경북', '울릉': '경북', '경주': '경북',
+            '영천': '경북', '경산': '경북', '청도': '경북', '고령': '경북', '성주': '경북',
+            '상주': '경북', '문경': '경북', '청송': '경북', '영양': '경북',
+            '김해': '경남', '양산': '경남', '부산': '경남', '통영': '경남', '거제': '경남',
+            '울산': '경남', '진주': '경남', '산청': '경남', '의령': '경남', '함안': '경남',
+            '창녕': '경남', '밀양': '경남', '창원': '경남', '사천': '경남', '거창': '경남',
+            '함양': '경남', '합천': '경남', '하동': '경남', '남해': '경남',
+            '제주': '제주', '서귀포': '제주',
+        };
+
+        function getJisaRegion(jisaName) {
+            // "당진지사" → "당진" → 충남
+            for (const [keyword, region] of Object.entries(JISA_REGION_MAP)) {
+                if (jisaName.includes(keyword)) return region;
+            }
+            return null;
+        }
+
+        function getCurrentPortRegion() {
+            const port = window._selectedPort;
+            if (port) return port.region;
+            return null;
+        }
+
+        async function loadDischargeNotices() {
+            const container = document.getElementById('dischargeNotice');
+            const updatedEl = document.getElementById('dischargeUpdatedAt');
+            container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;"><div class="spinner" style="display:inline-block;width:24px;height:24px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;"></div><div style="margin-top:8px;">방류 알림 조회 중...</div></div>';
+
+            try {
+                const resp = await fetch(`${API_BASE}/api/discharge-notice`);
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                const notices = data.notices || [];
+
+                window._dischargeLoaded = true;
+                window._dischargeData = data;
+
+                if (notices.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;">현재 방류 계획 알림이 없습니다.</div>';
+                    if (updatedEl) updatedEl.textContent = '';
+                    return;
+                }
+
+                const portRegion = getCurrentPortRegion();
+
+                let html = '<table class="discharge-table"><thead><tr>';
+                html += '<th>번호</th><th>제목</th><th>지역</th><th>등록일</th>';
+                html += '</tr></thead><tbody>';
+
+                for (const n of notices) {
+                    const jisaRegion = getJisaRegion(n.region);
+                    const isMatch = portRegion && jisaRegion === portRegion;
+                    const rowClass = isMatch ? ' class="discharge-highlight"' : '';
+                    const linkStart = n.link ? `<a href="${n.link}" target="_blank" rel="noopener">` : '';
+                    const linkEnd = n.link ? '</a>' : '';
+                    html += `<tr${rowClass}>`;
+                    html += `<td>${n.no}</td>`;
+                    html += `<td>${linkStart}${n.title}${linkEnd}</td>`;
+                    html += `<td>${n.region}</td>`;
+                    html += `<td>${n.date}</td>`;
+                    html += '</tr>';
+                }
+
+                html += '</tbody></table>';
+                container.innerHTML = html;
+
+                if (updatedEl && data.fetchedAt) {
+                    const d = new Date(data.fetchedAt);
+                    updatedEl.textContent = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')} 갱신`;
+                }
+            } catch (err) {
+                console.error('방류 알림 로드 실패:', err);
+                container.innerHTML = `<div class="error-msg">방류 알림을 불러올 수 없습니다.<br><span style="font-size:0.8em;">${err.message}</span></div>`;
+            }
+        }
+
+        // 새로고침 버튼
+        document.getElementById('dischargeReloadBtn')?.addEventListener('click', () => {
+            window._dischargeLoaded = false;
+            loadDischargeNotices();
+        });
+
+        // 10분 자동 갱신
+        setInterval(() => {
+            // 방류 탭이 활성화되어 있으면 자동 갱신
+            const dischargeTab = document.getElementById('tab-discharge');
+            if (dischargeTab && dischargeTab.classList.contains('active')) {
+                loadDischargeNotices();
+            } else {
+                // 비활성 상태면 다음 진입 시 새로 로드하도록 플래그 리셋
+                window._dischargeLoaded = false;
+            }
+        }, 10 * 60 * 1000);
 
         // 검색 이벤트
         const searchInput = document.getElementById('searchInput');
