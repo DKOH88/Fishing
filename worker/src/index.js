@@ -61,8 +61,11 @@ function isOriginAllowed(origin) {
 
 function getCorsHeaders(request) {
   const origin = (request && request.headers && request.headers.get('Origin')) || '';
+  if (!isOriginAllowed(origin)) {
+    return { 'Vary': 'Origin' };
+  }
   return {
-    'Access-Control-Allow-Origin': isOriginAllowed(origin) ? origin : 'https://fishing-tide.pages.dev',
+    'Access-Control-Allow-Origin': origin,
     'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
     'Access-Control-Max-Age': '86400',
@@ -992,30 +995,33 @@ async function handleDischargeNotice(ctx, request, env) {
       }
     }
 
-    // 각 방류 글의 상세 내용 크롤링 (병렬)
-    const detailPromises = rows.map(async (row) => {
-      if (!row.seq) return;
-      try {
-        const detailResp = await fetch(
-          `https://rims.ekr.or.kr/awminfo/WsNoticeListSub.do?seq=${row.seq}`,
-          { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)', 'Accept': 'text/html' } }
-        );
-        if (!detailResp.ok) return;
-        const detailHtml = await detailResp.text();
-        // "내용" 셀 추출: <th>내용</th> 다음 <td>...</td>
-        const contentMatch = detailHtml.match(/<th[^>]*>\s*내용\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
-        if (contentMatch) {
-          // HTML → 텍스트 변환: &nbsp; → 공백, <br> → 줄바꿈, 태그 제거
-          row.content = contentMatch[1]
-            .replace(/&nbsp;/g, ' ')
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<[^>]+>/g, '')
-            .replace(/\n{3,}/g, '\n\n')
-            .trim();
-        }
-      } catch (_) { /* 상세 실패 시 content 없이 진행 */ }
-    });
-    await Promise.all(detailPromises);
+    // 각 방류 글의 상세 내용 크롤링 (동시 5개 제한)
+    const DETAIL_CONCURRENCY = 5;
+    const seqRows = rows.filter(r => r.seq);
+    for (let i = 0; i < seqRows.length; i += DETAIL_CONCURRENCY) {
+      const batch = seqRows.slice(i, i + DETAIL_CONCURRENCY);
+      await Promise.all(batch.map(async (row) => {
+        try {
+          const detailResp = await fetch(
+            `https://rims.ekr.or.kr/awminfo/WsNoticeListSub.do?seq=${row.seq}`,
+            { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)', 'Accept': 'text/html' } }
+          );
+          if (!detailResp.ok) return;
+          const detailHtml = await detailResp.text();
+          // "내용" 셀 추출: <th>내용</th> 다음 <td>...</td>
+          const contentMatch = detailHtml.match(/<th[^>]*>\s*내용\s*<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/i);
+          if (contentMatch) {
+            // HTML → 텍스트 변환: &nbsp; → 공백, <br> → 줄바꿈, 태그 제거
+            row.content = contentMatch[1]
+              .replace(/&nbsp;/g, ' ')
+              .replace(/<br\s*\/?>/gi, '\n')
+              .replace(/<[^>]+>/g, '')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+          }
+        } catch (_) { /* 상세 실패 시 content 없이 진행 */ }
+      }));
+    }
 
     // KV에서 이전에 알려진 글 번호 목록 조회 → 새 글 감지
     let newCount = 0;

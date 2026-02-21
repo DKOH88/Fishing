@@ -1,4 +1,6 @@
     // ==================== CONFIG ====================
+    function safeMin(arr) { return arr.reduce((m, v) => v < m ? v : m, Infinity); }
+    function safeMax(arr) { return arr.reduce((m, v) => v > m ? v : m, -Infinity); }
     const API_BASE = 'https://tide-api-proxy.odk297.workers.dev';
 
     // ==================== 방문자 카운터 ====================
@@ -1138,8 +1140,8 @@
             const highs = filtered.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
             const lows = filtered.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
             if (highs.length > 0 && lows.length > 0) {
-                const maxH = Math.max(...highs.map(h => parseFloat(h.predcTdlvVl)));
-                const minL = Math.min(...lows.map(l => parseFloat(l.predcTdlvVl)));
+                const maxH = safeMax(highs.map(h => parseFloat(h.predcTdlvVl)));
+                const minL = safeMin(lows.map(l => parseFloat(l.predcTdlvVl)));
                 if (maxH > minL) diffs[dk] = Math.round((maxH - minL) * 10) / 10;
             }
         }
@@ -1151,7 +1153,7 @@
 
         // 전체 윈도우 MIN/MAX
         const vals = sortedEntries.map(e => e.diff);
-        const windowRange = { min: Math.min(...vals), max: Math.max(...vals) };
+        const windowRange = { min: safeMin(vals), max: safeMax(vals) };
 
         return { diffs, windowRange, sortedEntries };
     }
@@ -1216,8 +1218,8 @@
     // 유속(crsp) 직접 정규화: 해당일 max crsp를 ±15일 윈도우 max crsp의 min/max로 정규화
     function calcCrspFlowPct(todayMaxSpeed, windowMaxSpeeds) {
         if (todayMaxSpeed == null || !windowMaxSpeeds || windowMaxSpeeds.length < 3) return null;
-        const wMin = Math.min(...windowMaxSpeeds);
-        const wMax = Math.max(...windowMaxSpeeds);
+        const wMin = safeMin(windowMaxSpeeds);
+        const wMax = safeMax(windowMaxSpeeds);
         if (wMax <= wMin) return null;
         const pct = ((todayMaxSpeed - wMin) / (wMax - wMin)) * 100;
         return Math.round(clamp(pct, 0, 100));
@@ -1745,8 +1747,8 @@
             const highs = filteredItems.filter(i => parseInt(i.extrSe) % 2 === 1 && i.predcTdlvVl != null);
             const lows = filteredItems.filter(i => parseInt(i.extrSe) % 2 === 0 && i.predcTdlvVl != null);
 
-            const maxHigh = highs.length > 0 ? Math.max(...highs.map(h => parseFloat(h.predcTdlvVl))) : null;
-            const minLow = lows.length > 0 ? Math.min(...lows.map(l => parseFloat(l.predcTdlvVl))) : null;
+            const maxHigh = highs.length > 0 ? safeMax(highs.map(h => parseFloat(h.predcTdlvVl))) : null;
+            const minLow = lows.length > 0 ? safeMin(lows.map(l => parseFloat(l.predcTdlvVl))) : null;
             const diff = (maxHigh !== null && minLow !== null) ? maxHigh - minLow : null;
 
             const bestHigh = highs.length > 0 ? highs.reduce((a, b) => parseFloat(a.predcTdlvVl) > parseFloat(b.predcTdlvVl) ? a : b) : null;
@@ -2370,7 +2372,7 @@
 
         if (speeds.length === 0) return null;
         const avgSpeed = speeds.reduce((a, b) => a + b, 0) / speeds.length;
-        const maxSpeed = Math.max(...speeds);
+        const maxSpeed = safeMax(speeds);
         const unit = units.find((u) => !!u) || '';
 
         let dirDegAvg = null;
@@ -2483,7 +2485,7 @@
             // fActual 배열 길이를 fLabels와 동일하게 유지 (Chart.js 매핑 보장)
 
             const _fValid = fPredicted.filter(v => v != null);
-            const _dataMin = _fValid.length > 0 ? Math.min(..._fValid) : 0;
+            const _dataMin = _fValid.length > 0 ? safeMin(_fValid) : 0;
             const _lowTimeLabelBase = _dataMin <= 70 ? 70 : _dataMin;
             const _lowTimeLabelAdjust = _dataMin <= 70 ? 21 : 24;
             let annotations = {};
@@ -2724,7 +2726,7 @@
         }
 
         // 3단계: 정규화 (최대 절대값 기준 0~1)
-        const maxAbs = Math.max(...smoothed.map(Math.abs), 0.001);
+        const maxAbs = Math.max(safeMax(smoothed.map(Math.abs)), 0.001);
         return smoothed.map(v => v / maxAbs);
     }
 
@@ -2956,8 +2958,8 @@
             grid: { color: 'rgba(255,255,255,0.06)' }
         };
         if (_yAll.length > 0) {
-            const _yMinAuto = Math.min(..._yAll);
-            const _yMaxAuto = Math.max(..._yAll);
+            const _yMinAuto = safeMin(_yAll);
+            const _yMaxAuto = safeMax(_yAll);
             yScale.min = Math.min(0, Math.floor(_yMinAuto / 100) * 100);
             yScale.max = Math.max(100, Math.ceil(_yMaxAuto / 100) * 100);
         } else {
@@ -2970,8 +2972,8 @@
             y: yScale
         };
         if (activeSpecies === 'gapoh' && _pValid.length > 0) {
-            const yMax = Math.max(..._pValid);
-            const yMin = Math.min(..._pValid);
+            const yMax = safeMax(_pValid);
+            const yMin = safeMin(_pValid);
             const yCenter = (yMax + yMin) / 2;
             // 기존 고조/저조 annotation(hl_) 위치를 그대로 사용
             const hlPoints = [];
@@ -3055,7 +3057,7 @@
                     backgroundColor: 'rgba(255,235,59,0.9)',
                     radius: 5, borderColor: '#fff', borderWidth: 1.5,
                 };
-                const _yMin = _pValid.length > 0 ? Math.min(..._pValid) : 0;
+                const _yMin = _pValid.length > 0 ? safeMin(_pValid) : 0;
                 annotations['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMin,
                     xAdjust: 0, yAdjust: 21,
@@ -3211,7 +3213,7 @@
                     radius: 5, borderColor: '#fff', borderWidth: 1.5,
                 };
                 const _filteredT = cd.predicted.filter(v => v != null);
-                const _yMinT = _filteredT.length > 0 ? Math.min(..._filteredT) : 0;
+                const _yMinT = _filteredT.length > 0 ? safeMin(_filteredT) : 0;
                 ann['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMinT,
                     xAdjust: 0, yAdjust: 22,
@@ -3390,7 +3392,7 @@
 
             // 백그라운드: crsp 직접 정규화 (1순위 — 조차 기반보다 정확)
             const crspSpeeds = timeFiltered.map(i => parseFloat(i.crsp) || 0).filter(s => s > 0);
-            const todayMaxCrsp = crspSpeeds.length > 0 ? Math.max(...crspSpeeds) : null;
+            const todayMaxCrsp = crspSpeeds.length > 0 ? safeMax(crspSpeeds) : null;
             if (todayMaxCrsp != null && cStation && mulddaeCardState) {
                 (async () => {
                     try {
@@ -3401,7 +3403,7 @@
                             if (crspPct != null && mulddaeCardState && mulddaeCardState.dateStr === dateStr) {
                                 mulddaeCardState.rangePct = crspPct;
                                 renderMulddaeCardFromState();
-                                console.log(`[crsp 정규화] ${cStation} ${dateStr}: todayMax=${todayMaxCrsp.toFixed(1)}, window=[${Math.min(...windowMaxSpeeds).toFixed(1)}~${Math.max(...windowMaxSpeeds).toFixed(1)}], pct=${crspPct}%`);
+                                console.log(`[crsp 정규화] ${cStation} ${dateStr}: todayMax=${todayMaxCrsp.toFixed(1)}, window=[${safeMin(windowMaxSpeeds).toFixed(1)}~${safeMax(windowMaxSpeeds).toFixed(1)}], pct=${crspPct}%`);
                             }
                         }
                     } catch (e) {
@@ -3433,7 +3435,7 @@
     function renderCurrentTable(items, el, fldEbbSummary = null, areaSummary = null) {
         if (!items || items.length === 0) return;
         const speeds = items.map(i => parseFloat(i.crsp) || 0);
-        const maxSpeed = speeds.length > 0 ? Math.max(...speeds, 1) : 1;
+        const maxSpeed = speeds.length > 0 ? Math.max(safeMax(speeds), 1) : 1;
         const speedUnitLabel = getCurrentSpeedUnitLabel();
         const fldText = fldEbbSummary && fldEbbSummary.fldTime ? fldEbbSummary.fldTime : '-';
         const ebbText = fldEbbSummary && fldEbbSummary.ebbTime ? fldEbbSummary.ebbTime : '-';
@@ -3551,7 +3553,7 @@
                 borderWidth: 1.5, borderDash: [5, 4],
             };
             // 기준값 라벨 (좌측 Y축 끝, 값이 낮으면 포인트 위로 이동)
-            const _speedMax = Math.max(...speeds);
+            const _speedMax = safeMax(speeds);
             const _yAxisMax = Math.ceil(_speedMax / 50) * 50 + 50;
             const _isNearBottom = nowSpeed < _yAxisMax * 0.15;
             annotations['now_hline_val'] = {
@@ -3677,9 +3679,9 @@
         // Y축 범위 계산 (datasets보다 먼저)
         const tideValid = tideValues.filter(v => v != null);
         const speedValid = speedValues.filter(v => v != null);
-        const tideMin = tideValid.length > 0 ? Math.min(...tideValid) : 0;
-        const tideMax = tideValid.length > 0 ? Math.max(...tideValid) : 100;
-        const speedMax = speedValid.length > 0 ? Math.max(...speedValid) : 50;
+        const tideMin = tideValid.length > 0 ? safeMin(tideValid) : 0;
+        const tideMax = tideValid.length > 0 ? safeMax(tideValid) : 100;
+        const speedMax = speedValid.length > 0 ? safeMax(speedValid) : 50;
 
         // 현재 시간 인덱스 계산 (segment 색상 분리용, datasets 생성 전에 필요)
         let nowIdx = -1;
@@ -3801,7 +3803,7 @@
                     yScaleID: 'yTide',
                 };
             }
-            const _tValid = tideValid.length > 0 ? Math.min(...tideValid) : 0;
+            const _tValid = tideValid.length > 0 ? safeMin(tideValid) : 0;
             annotations['now_label'] = {
                 type: 'label', xValue: nowIdx,
                 yValue: hasTide ? _tValid : 0,
