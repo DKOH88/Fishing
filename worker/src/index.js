@@ -48,7 +48,6 @@ const PRECACHE_PORTS = [
 ];
 
 const ALLOWED_ORIGINS = new Set([
-  'https://fishing-tide.pages.dev',
   'https://fishing-info.pages.dev',
 ]);
 
@@ -751,20 +750,86 @@ async function runPrecacheBatches(tasks, apiKey, cache, concurrency = 10, delayM
 
 // ==================== 날씨 API (기상청 단기예보) ====================
 
+// ==================== AWS 관측소 좌표 테이블 (주요 해안/도서 지역) ====================
+const AWS_STATIONS = [
+  // [stn, lat, lon, name]
+  // 서해 (인천~군산)
+  [90,38.251,128.565,'속초'],[95,38.148,127.304,'철원'],[98,37.903,127.060,'동두천'],
+  [99,37.886,126.768,'파주'],[100,37.677,128.718,'대관령'],[101,37.903,127.736,'춘천'],
+  [105,37.751,128.891,'강릉'],[108,37.571,126.966,'서울'],[112,37.478,126.625,'인천'],
+  [114,37.338,127.947,'원주'],[115,37.481,130.899,'울릉도'],[119,37.271,126.989,'수원'],
+  [127,36.970,127.952,'충주'],[129,36.777,126.494,'서산'],[130,36.992,129.413,'울진'],
+  [131,36.639,127.441,'청주'],[133,36.369,127.374,'대전'],[135,36.220,127.999,'추풍령'],
+  [136,36.573,128.707,'안동'],[138,36.033,129.380,'포항'],[140,35.992,126.763,'군산'],
+  [143,35.885,128.654,'대구'],[146,35.821,127.155,'전주'],[152,35.560,129.320,'울산'],
+  [155,35.170,128.573,'창원'],[156,35.173,126.892,'광주'],[159,35.105,129.032,'부산'],
+  [162,34.845,128.439,'통영'],[165,34.817,126.382,'목포'],[168,34.739,127.741,'여수'],
+  [169,34.688,125.452,'흑산도'],[170,34.396,126.702,'완도'],[172,35.428,126.583,'고창'],
+  [175,34.472,126.319,'진도'],[184,33.514,126.530,'제주'],[185,33.294,126.163,'고산'],
+  [188,33.387,126.880,'성산'],[189,33.246,126.565,'서귀포'],[192,35.164,128.041,'진주'],
+  // 추가 해안 AWS 관측소
+  [201,37.508,126.417,'강화'],[202,37.469,126.629,'양도'],[203,36.125,126.332,'격렬비열도'],
+  [232,36.764,127.122,'천안'],[235,36.328,126.558,'보령'],[236,36.272,126.910,'부여'],
+  [238,36.107,127.483,'금산'],[243,35.407,129.324,'기장'],[245,35.893,128.854,'영천'],
+  [252,35.821,127.613,'임실'],[260,35.001,126.711,'해남'],[261,33.521,126.810,'구좌'],
+  [262,33.300,126.253,'성판악'],[268,34.689,125.441,'가거도'],[278,34.314,126.510,'보길도'],
+  [279,34.747,125.110,'흑산면'],[284,34.069,126.258,'추자도'],[285,33.389,126.187,'우도'],
+  [288,37.752,126.765,'백령도'],[289,37.038,125.977,'연평도'],[295,37.145,126.028,'덕적도'],
+  [310,38.068,128.716,'강릉항'],[311,37.533,129.117,'동해항'],[312,37.243,131.867,'울릉북측'],
+  [328,34.935,128.668,'거제'],[329,34.903,128.079,'남해'],[330,34.684,127.766,'금오도'],
+  [335,35.127,128.977,'부산항'],[336,34.816,128.734,'한산도'],[338,36.041,129.581,'포항영일만'],
+  [520,37.210,126.343,'대부도'],[523,36.969,126.489,'안면도'],[524,36.610,126.479,'천수만'],
+  [526,36.030,126.660,'위도'],[527,35.859,125.764,'어청도'],[535,34.531,126.010,'홍도'],
+  [540,34.485,127.529,'거문도'],[541,32.123,125.182,'이어도'],[751,37.397,126.644,'소무의도'],
+];
+
+/** lat/lon으로 가장 가까운 AWS 관측소 번호 반환 */
+function findNearestAws(lat, lon) {
+  let best = null, bestDist = Infinity;
+  for (const [stn, sLat, sLon] of AWS_STATIONS) {
+    const d = (lat - sLat) ** 2 + (lon - sLon) ** 2;
+    if (d < bestDist) { bestDist = d; best = stn; }
+  }
+  return best;
+}
+
+/** 기상청 API허브 AWS 매분자료에서 기온(TA) 추출 */
+async function fetchAwsTemperature(stn, authKey) {
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
+  const tm2 = now.toISOString().slice(0, 16).replace(/[-T:]/g, '').slice(0, 12); // YYYYMMDDHHMM
+  const awsUrl = `https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min`
+    + `?tm2=${tm2}&stn=${stn}&disp=1&help=2&authKey=${authKey}`;
+  const resp = await fetch(awsUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+  if (!resp.ok) return null;
+  const text = await resp.text();
+  // 마지막 유효 데이터 행 파싱 (CSV: YYYYMMDDHHMM,STN,WD1,WS1,WDS,WSS,WD10,WS10,TA,RE,...)
+  const lines = text.trim().split('\n').filter(l => l.match(/^\d{12},/));
+  if (lines.length === 0) return null;
+  const last = lines[lines.length - 1];
+  const cols = last.split(',');
+  if (cols.length < 9) return null;
+  const ta = parseFloat(cols[8]); // TA = 9번째 컬럼 (index 8)
+  if (ta <= -50) return null; // -50 이하 = 결측/에러
+  const re = parseFloat(cols[9]); // RE = 강수감지
+  return { ta: String(ta), re: re > 0 ? '1' : '0', obsTime: cols[0], stn: parseInt(cols[1]) };
+}
+
 async function handleWeather(env, request, url, ctx) {
   const nx = url.searchParams.get('nx');
   const ny = url.searchParams.get('ny');
+  const lat = url.searchParams.get('lat');
+  const lon = url.searchParams.get('lon');
   if (!nx || !ny || !/^\d{1,4}$/.test(nx) || !/^\d{1,4}$/.test(ny)) {
     return jsonResponse({ error: 'nx, ny must be 1-4 digit numbers' }, 400, request);
   }
 
-  // 캐시 확인 (1시간)
+  // 캐시 확인 (5분 단위 — AWS 매분 데이터를 반영하기 위해 짧게)
   const cache = caches.default;
-  // 캐시 키에 baseHour 포함 → 매시간 자동 갱신
   const _nowForKey = new Date(Date.now() + 9 * 3600 * 1000);
   const _dateKey = _nowForKey.toISOString().slice(0, 10).replace(/-/g, '');
   const _hhKey = _nowForKey.getUTCHours();
-  const cacheKey = new Request(`https://cache.internal/weather-v4-${nx}-${ny}-${_dateKey}-${_hhKey}`, { method: 'GET' });
+  const _mmKey = Math.floor(_nowForKey.getUTCMinutes() / 5); // 5분 단위
+  const cacheKey = new Request(`https://cache.internal/weather-v6-${nx}-${ny}-${_dateKey}-${_hhKey}-${_mmKey}`, { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     const body = await cached.text();
@@ -778,25 +843,13 @@ async function handleWeather(env, request, url, ctx) {
   if (!apiKey) {
     return jsonResponse({ error: 'KMA_API_KEY not set' }, 500, request);
   }
+  const apihubKey = env.KMA_APIHUB_KEY; // 기상청 API허브 인증키
 
-  // KST 현재 시각 기준 base_date, base_time 계산
-  const now = new Date(Date.now() + 9 * 3600 * 1000); // UTC → KST
+  // KST 현재 시각
+  const now = new Date(Date.now() + 9 * 3600 * 1000);
   const yyyymmdd = now.toISOString().slice(0, 10).replace(/-/g, '');
   const hh = now.getUTCHours();
   const mm = now.getUTCMinutes();
-
-  // 초단기실황 base_time: 매시 정각 (0000~2300), 발표 후 ~40분 소요
-  let baseDate = yyyymmdd;
-  let baseHour = hh;
-  if (mm < 40) {
-    baseHour = hh - 1;
-    if (baseHour < 0) {
-      baseHour = 23;
-      const yesterday = new Date(now.getTime() - 86400000);
-      baseDate = yesterday.toISOString().slice(0, 10).replace(/-/g, '');
-    }
-  }
-  const baseTime = String(baseHour).padStart(2, '0') + '00';
 
   // 초단기예보 base_time (SKY용): HH30 형식
   let fcstBaseDate = yyyymmdd;
@@ -812,72 +865,92 @@ async function handleWeather(env, request, url, ctx) {
   const fcstBaseTime = String(fcstBaseHour).padStart(2, '0') + '30';
 
   try {
-    // 1) 초단기실황 API (실측 기온 T1H, PTY)
-    const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
-      + `?serviceKey=${apiKey}`
-      + `&numOfRows=10&pageNo=1&dataType=JSON`
-      + `&base_date=${baseDate}&base_time=${baseTime}`
-      + `&nx=${nx}&ny=${ny}`;
-
-    // 2) 초단기예보 API (SKY 하늘상태)
-    const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
-      + `?serviceKey=${apiKey}`
-      + `&numOfRows=60&pageNo=1&dataType=JSON`
-      + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}`
-      + `&nx=${nx}&ny=${ny}`;
-
-    const [ncstResp, fcstResp] = await Promise.all([
-      fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } }),
-      fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } }),
-    ]);
-
-    // 실황 데이터에서 T1H, PTY 추출
-    let tmp = null, pty = null, fcstTime = null;
-    if (ncstResp.ok) {
-      const ncstData = await ncstResp.json();
-      const ncstItems = ncstData?.response?.body?.items?.item;
-      if (ncstItems && Array.isArray(ncstItems)) {
-        for (const item of ncstItems) {
-          if (item.category === 'T1H') tmp = item.obsrValue;
-          if (item.category === 'PTY') pty = item.obsrValue;
+    // ── 1) AWS 실관측 기온 (기상청 API허브) ──
+    let tmp = null, pty = null, fcstTime = null, awsStn = null;
+    if (apihubKey && lat && lon) {
+      const fLat = parseFloat(lat), fLon = parseFloat(lon);
+      if (!isNaN(fLat) && !isNaN(fLon)) {
+        awsStn = findNearestAws(fLat, fLon);
+        if (awsStn) {
+          try {
+            const aws = await fetchAwsTemperature(awsStn, apihubKey);
+            if (aws) {
+              tmp = aws.ta;
+              if (aws.re === '1') pty = '1'; // 강수 감지 시 PTY=1(비)
+              fcstTime = aws.obsTime ? aws.obsTime.slice(8, 12) : null;
+            }
+          } catch (e) { console.log('[weather] AWS fetch error:', e.message); }
         }
-        fcstTime = baseTime;
       }
     }
 
-    // 예보 데이터에서 SKY 추출
-    let sky = null;
-    if (fcstResp.ok) {
-      const fcstData = await fcstResp.json();
-      const fcstItems = fcstData?.response?.body?.items?.item;
-      if (fcstItems && Array.isArray(fcstItems)) {
-        const targetHour = String(hh).padStart(2, '0') + '00';
-        for (const item of fcstItems) {
-          if (item.fcstTime === targetHour && item.category === 'SKY') {
-            sky = item.fcstValue;
-            break;
+    // ── 2) 초단기실황 fallback (AWS 실패 시) ──
+    if (tmp === null) {
+      let baseDate = yyyymmdd;
+      let baseHour = hh;
+      if (mm < 15) {
+        baseHour = hh - 1;
+        if (baseHour < 0) { baseHour = 23; const y = new Date(now.getTime() - 86400000); baseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
+      }
+      const baseTime = String(baseHour).padStart(2, '0') + '00';
+      const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
+        + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
+        + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
+      try {
+        const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+        if (ncstResp.ok) {
+          const ncstData = await ncstResp.json();
+          const ncstItems = ncstData?.response?.body?.items?.item;
+          if (ncstItems && Array.isArray(ncstItems)) {
+            for (const item of ncstItems) {
+              if (item.category === 'T1H') tmp = item.obsrValue;
+              if (item.category === 'PTY') pty = item.obsrValue;
+            }
+            fcstTime = baseTime;
           }
         }
-        // fallback: 첫 번째 SKY
-        if (sky === null) {
-          const first = fcstItems.find(i => i.category === 'SKY');
-          if (first) sky = first.fcstValue;
+      } catch (e) { /* fallback 실패 */ }
+    }
+
+    // ── 3) 초단기예보 (SKY 하늘상태 + T1H/PTY fallback) ──
+    let sky = null;
+    const fcstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtFcst`
+      + `?serviceKey=${apiKey}&numOfRows=60&pageNo=1&dataType=JSON`
+      + `&base_date=${fcstBaseDate}&base_time=${fcstBaseTime}&nx=${nx}&ny=${ny}`;
+    try {
+      const fcstResp = await fetch(fcstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+      if (fcstResp.ok) {
+        const fcstData = await fcstResp.json();
+        const fcstItems = fcstData?.response?.body?.items?.item;
+        if (fcstItems && Array.isArray(fcstItems)) {
+          const targetHour = String(hh).padStart(2, '0') + '00';
+          for (const item of fcstItems) {
+            if (item.fcstTime === targetHour) {
+              if (item.category === 'SKY') sky = item.fcstValue;
+              if (item.category === 'T1H' && tmp === null) tmp = item.fcstValue;
+              if (item.category === 'PTY' && pty === null) pty = item.fcstValue;
+            }
+          }
+          if (sky === null) {
+            const first = fcstItems.find(i => i.category === 'SKY');
+            if (first) sky = first.fcstValue;
+          }
         }
       }
-    }
+    } catch (e) { /* 예보 실패 */ }
 
     const result = {
       sky, pty, tmp, fcstTime,
-      baseDate, baseTime,
+      baseDate: yyyymmdd, baseTime: String(hh).padStart(2, '0') + '00',
       nx: parseInt(nx), ny: parseInt(ny),
+      awsStn: awsStn || null,
       fetchedAt: kstNowISO(),
     };
 
     const jsonBody = JSON.stringify(result);
-    // 캐시 30분 (초단기예보는 매시간 갱신)
     const cacheResp = new Response(jsonBody, {
       status: 200,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300' }, // 5분 캐시
     });
     ctx.waitUntil(cache.put(cacheKey, cacheResp.clone()));
 

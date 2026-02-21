@@ -402,15 +402,15 @@
     // SKY + PTY → SVG 아이콘 파일명 매핑
     function getWeatherIconFile(sky, pty, isNight) {
         // PTY(강수형태)가 우선
-        if (pty === '1') return 'ModerateRainV2.svg';                                    // 비
+        if (pty === '1') return isNight ? 'ModerateRainV2.svg' : '비(낮).svg';           // 비
         if (pty === '2') return 'RainSnowV2.svg';                                        // 비/눈
         if (pty === '3') return 'LightSnowV2.svg';                                       // 눈
-        if (pty === '4') return isNight ? 'RainShowersNightV2.svg' : 'RainShowersDayV2.svg'; // 소나기
+        if (pty === '4') return isNight ? 'RainShowersNightV2.svg' : '비(낮).svg';       // 소나기
         // SKY(하늘상태)
-        if (sky === '1') return isNight ? 'ClearNightV3.svg' : 'SunnyDayV3.svg';         // 맑음
-        if (sky === '3') return isNight ? 'PartlyCloudyNightV2.svg' : 'PartlyCloudyDayV3.svg'; // 구름많음
-        if (sky === '4') return 'CloudyV3.svg';                                          // 흐림
-        return isNight ? 'ClearNightV3.svg' : 'SunnyDayV3.svg';
+        if (sky === '1') return isNight ? 'ClearNightV3.svg' : '맑음(낮).svg';           // 맑음
+        if (sky === '3') return isNight ? 'PartlyCloudyNightV2.svg' : '구름많음(낮).svg'; // 구름많음
+        if (sky === '4') return isNight ? 'CloudyV3.svg' : '흐림(낮).svg';               // 흐림
+        return isNight ? 'ClearNightV3.svg' : '구름조금(낮).svg';
     }
 
     async function loadWeather() {
@@ -419,7 +419,7 @@
         const { nx, ny } = latLonToGrid(port.lat, port.lon);
 
         try {
-            const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}`);
+            const resp = await fetch(`${API_BASE}/api/weather?nx=${nx}&ny=${ny}&lat=${port.lat}&lon=${port.lon}`);
             if (!resp.ok) throw new Error('API error');
             const data = await resp.json();
             if (!data.sky) { _weatherInfo = null; return; }
