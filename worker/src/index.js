@@ -921,9 +921,9 @@ async function handleWeather(env, request, url, ctx) {
 // ==================== 방류/급수 알림 크롤링 (discharge-notice) ====================
 
 async function handleDischargeNotice(ctx, request, env) {
-  // 10분 캐시
+  // 30분 캐시
   const cache = caches.default;
-  const cacheKey = new Request('https://cache.internal/discharge-notice-v3', { method: 'GET' });
+  const cacheKey = new Request('https://cache.internal/discharge-notice-v4', { method: 'GET' });
   const cached = await cache.match(cacheKey);
   if (cached) {
     // 캐시된 응답에 현재 요청의 CORS 헤더 적용

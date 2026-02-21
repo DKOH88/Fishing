@@ -591,7 +591,7 @@
         }
 
         // 방류 데이터 fetch (캐시 → 프리페치 Promise → 네트워크)
-        const DISCHARGE_CACHE_KEY = 'discharge-notice-v1';
+        const DISCHARGE_CACHE_KEY = 'discharge-notice-v2';
         const DISCHARGE_CACHE_TTL = 30 * 60 * 1000; // 30분
 
         function _fetchDischargeData() {
