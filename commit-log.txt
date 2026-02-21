@@ -1,5 +1,7 @@
 == Commit Log ==
 
+✅ [26-02-21┃13:07:22] bddb35b — 임시/테스트 파일 정리 및 .gitignore 보강
+✅ [26-02-21┃13:04:42] bf0ac99 — 커밋 로그 업데이트
 ✅ [26-02-21┃10:53:10] 9af761a — 과거 날짜 조회 시 current-area API 호출 스킵 (KHOA 당일/미래만 지원)
 ✅ [26-02-21┃10:51:03] 9023250 — Worker CORS 캐시 충돌 수정: Vary: Origin 헤더 추가
 ✅ [26-02-21┃10:29:54] 42d5773 — Worker deploy 스크립트에서 --no-browser 제거 (wrangler 4.x 미지원 옵션)
