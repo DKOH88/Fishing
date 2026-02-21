@@ -2912,9 +2912,10 @@
             }
 
             let areaSummary = null;
+            const today = new Date(); const todayStr = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
             try {
                 const geo = getActiveGeoPoint(stationCode);
-                if (geo) {
+                if (geo && dateStr >= todayStr) {
                     const bounds = getKhoaAreaBounds(geo.lat, geo.lon);
                     const t = getKhoaAreaQueryTime(dateStr);
                     const areaRaw = await apiCallRaw('/api/khoa/current-area', {
