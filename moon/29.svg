@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generator: visioncortex VTracer 0.6.12 -->
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="300" height="303">
+<path d="M0 0 C0.7582910156249909 0.18804199218750028 1.5165820312500102 0.37608398437500057 2.2978515625 0.56982421875 C15.319782024533055 3.86064983008405 27.102102325440512 8.974619894901942 39.049072265625 15.063720703125 C41 15.999999999999996 41 15.999999999999996 44 17 C45.688403511888225 18.30569871586023 47.35241159957107 19.643162493764414 49 21 C50.8314680458636 22.33589433933581 52.66492417725732 23.669065886802002 54.5 25 C69.37828606770165 36.163289669493246 80.7102129334641 49.13887200808733 90.8359375 64.71484375 C92.48687383001464 67.2210485397876 94.19214906230042 69.60986578482051 96 72 C96.66666666666669 73.33333333333333 97.33333333333331 74.66666666666667 98 76 C98.515625 76.61875 99.03125 77.2375 99.5625 77.875 C101.356359824928 80.52679278467619 101.5132614404717 82.87096640303241 102 86 C102.66000000000003 86.33 103.32 86.66 104 87 C104.3415393699924 88.66500442871305 104.67449498008801 90.33178677295108 105 92 C105.66000000000003 92.66 106.32 93.32 107 94 C107.59765625 96.02343749999987 107.59765625 96.02343749999987 108.0625 98.375 C109.69524551831648 106.44427123928298 109.69524551831648 106.44427123928298 111.0625 108.9375 C112.19063924168586 111.4194063317089 112.14977636701468 113.30402539373611 112 116 C112.32999999999998 116 112.66000000000003 116 113 116 C113 118.31 113 120.62 113 123 C113.32999999999998 123 113.66000000000003 123 114 123 C114.02465288138643 127.68139253773307 114.04283739172996 132.36274759084222 114.054931640625 137.044189453125 C114.0599715730371 138.63794614460045 114.0668034969928 140.23169819030875 114.075439453125 141.825439453125 C114.08751998537514 144.11150252657472 114.0932315513005 146.3975046706855 114.09765625 148.68359375 C114.10281753540039 149.4002671813965 114.10797882080078 150.11694061279297 114.11329650878906 150.85533142089844 C114.11349262885295 152.57063672386707 114.06192007391945 154.28581266330042 114 156 C113.67000000000002 156.33 113.33999999999997 156.66 113 157 C112.91589962236924 158.58233303097887 112.85947918998306 160.1661301662848 112.8125 161.75 C111.81451784305017 174.64700018212105 107.3802165376269 187.41898777221047 102.3125 199.25 C102.16997802734375 199.5866064453125 102.16997802734375 199.5866064453125 101.44873046875 201.2900390625 C100.61328125000006 203.14062499999983 100.61328125000006 203.14062499999983 99 206 C98.00999999999999 206.33 97.01999999999998 206.66 96 207 C95.90718750000002 207.8726953125 95.81437499999998 208.745390625 95.71875 209.64453125 C93.48302679876889 220.08195641226914 82.65907560398517 232.91672536682051 74 239 C72.11841580399354 240.75614524960602 70.36769285727797 242.54655747501346 68.745849609375 244.546630859375 C65.08749765185391 249.0498531248494 61.15365076515505 252.4586876705166 56.4375 255.8125 C55.79103515624999 256.28880859375 55.14457031250001 256.7651171875 54.478515625 257.255859375 C51.09606614560306 259.7023716637601 47.98372864290536 261.6384724891336 44 263 C41.99999999999994 264.00000000000006 41.99999999999994 264.00000000000006 40.83984375 265.32421875 C20.671681051975924 283.69394655775443 -16.26844732780563 284.4946054012621 -41.48828125 284.1611328125 C-44 284 -44 284 -46 283 C-47.010625000000005 283 -48.02125000000001 283 -49.0625 283 C-50.031875000000014 283 -51.00125 283 -52 283 C-52.33 282.67 -52.66 282.34 -53 282 C-53.3815625 282.0103125 -53.3815625 282.0103125 -55.3125 282.0625 C-58.00000000000003 282 -58.00000000000003 282 -59.8125 281.0625 C-62.57206743547995 279.72213867419543 -65.08986510639122 279.53489450891016 -68.1171875 279.2109375 C-72.26109096638822 278.746682754803 -76.06626891624256 277.34104468764457 -80 276 C-80 275.34 -80 274.68 -80 274 C-81.65 274 -83.3 274 -85 274 C-85 273.34 -85 272.68 -85 272 C-87.31 271.67 -89.62 271.34 -92 271 C-92 270.34 -92 269.68 -92 269 C-95.6678852046016 267.0381079138177 -98.8724855090886 265.60698742513404 -103 265 C-103 264.34 -103 263.68 -103 263 C-104.65 262.67 -106.3 262.34 -108 262 C-108 261.34 -108 260.68 -108 260 C-110.01284844688158 258.49189318493524 -112.03651400215549 257.0839400529537 -114.125 255.6875 C-144.62867256316727 234.55211378913836 -164.33374593661765 201.87936725965477 -171.875 165.8125 C-172.27358724624474 163.54568786951614 -172.65191037868482 161.27511376491603 -173 159 C-173.1301953125 158.1840234375 -173.260390625 157.368046875 -173.39453125 156.52734375 C-177.93827803817427 121.20728538325861 -167.7164672751646 83.44810424471959 -146.67578125 54.83984375 C-144.51596514057468 52.15986250427328 -142.28977331812936 49.56940935167083 -140 47 C-139.2819921875 46.162109375 -138.563984375 45.32421875 -137.82421875 44.4609375 C-119.2899721844668 23.19428868768304 -94.59512698411764 7.365459466411174 -67 1 C-66.361591796875 0.8322607421875006 -65.72318359375 0.6645214843749994 -65.0654296875 0.49169921875 C-44.241745016959584 -4.9498809317821655 -20.888410638598742 -5.474583448842897 0 0 Z M-124 35 C-125.08328871154148 35.85422325711862 -126.16661307234672 36.7084013110035 -127.25 37.5625 C-130.87290301263212 40.77370948846938 -133.93010006990906 44.262730519889296 -137 48 C-137.776015625 48.9384375 -138.55203125 49.876875 -139.3515625 50.84375 C-162.11186563389515 79.01023744313966 -173.74266365844647 115.73847378764253 -170.375 151.875 C-166.72752803769745 185.16061980571814 -152.9255299440697 213.66494380258786 -130 238 C-129.4005859375 238.6638671875 -128.801171875 239.327734375 -128.18359375 240.01171875 C-109.74916042001354 259.6406078033117 -83.06157925266304 271.76010575872385 -57 277 C-55.9365234375 277.224296875 -54.873046875 277.44859375 -53.77734375 277.6796875 C-18.389266327858337 283.95752383491214 19.219167148885816 274.7271107247501 49 255 C81.08152421865458 231.8914405197255 100.81758527251998 199.7692972495373 108 161 C113.81806505327091 124.74978566808852 104.12093922356587 88.527095701562 83.125 58.6875 C78.25797352560687 51.98592761544297 72.73586556823034 45.959224819329656 67 40 C66.419921875 39.3567578125 65.83984375 38.713515625 65.2421875 38.05078125 C43.82858860604705 14.969288974859762 7.3442497671675255 1.38244114911096 -23.4677734375 -0.120361328125 C-61.379705169999255 -1.3314567726516913 -95.04774507437111 10.574482000853802 -124 35 Z M105 94 C106 96 106 96 106 96 Z M106 97 C107 99 107 99 107 99 Z M107 100 C108 102 108 102 108 102 Z M111 159 C112 163 112 163 112 163 Z M110 165 C111 168 111 168 111 168 Z M109 170 C110 173 110 173 110 173 Z M108 174 C109 177 109 177 109 177 Z M107 178 C108 180 108 180 108 180 Z M106 181 C107 183 107 183 107 183 Z M105 184 C106 186 106 186 106 186 Z M104 187 C105 189 105 189 105 189 Z M103 190 C104 192 104 192 104 192 Z M100 197 C101 199 101 199 101 199 Z M99 199 C100 201 100 201 100 201 Z M89 217 C90 219 90 219 90 219 Z M-13 281 C-9 282 -9 282 -9 282 Z M-27 282 C-27 282.33 -27 282.66 -27 283 C-23.370000000000005 283 -19.74000000000001 283 -16 283 C-16 282.67 -16 282.34 -16 282 C-19.629999999999995 282 -23.25999999999999 282 -27 282 Z " fill="#EEE33C" transform="translate(180,11)"/>
+<path d="M0 0 C0.6599999999999966 0.3299999999999841 0.6599999999999966 0.3299999999999841 4 2 C3.009999999999998 2 2.020000000000003 2 1 2 C0.6700000000000017 1.339999999999975 0.3400000000000034 0.6800000000000068 0 0 Z " fill="#EEE33C" transform="translate(53,258)"/>
+<path d="M0 0 C0.990000000000002 0.3299999999999841 1.980000000000004 0.660000000000025 3 1 C2.010000000000005 1 1.019999999999996 1 0 1 C0 0.6700000000000159 0 0.339999999999975 0 0 Z " fill="#EEE33C" transform="translate(63,266)"/>
+<path d="M0 0 C0.990000000000002 0.3299999999999841 1.9799999999999969 0.660000000000025 3 1 C2.009999999999998 1 1.0200000000000031 1 0 1 C0 0.6700000000000159 0 0.339999999999975 0 0 Z " fill="#EEE33C" transform="translate(59,263)"/>
+<path d="M0 0 C0.3299999999999983 0.16499999999999204 0.3299999999999983 0.16499999999999204 2 1 C1.6700000000000017 1.6599999999999966 1.3400000000000034 2.319999999999993 1 3 C0.6700000000000017 2.009999999999991 0.3400000000000034 1.0200000000000102 0 0 Z " fill="#EEE33C" transform="translate(39,243)"/>
+<path d="M0 0 C0.3299999999999841 0.16499999999999915 0.3299999999999841 0.16499999999999915 2 1 C1.670000000000016 1.6599999999999966 1.339999999999975 2.3200000000000003 1 3 C0.6700000000000159 2.009999999999998 0.339999999999975 1.0200000000000031 0 0 Z " fill="#EEE33C" transform="translate(262,61)"/>
+<path d="M0 0 C0.3299999999999841 0.16499999999999915 0.3299999999999841 0.16499999999999915 2 1 C1.670000000000016 1.6599999999999966 1.339999999999975 2.3200000000000003 1 3 C0.6700000000000159 2.009999999999998 0.339999999999975 1.0200000000000031 0 0 Z " fill="#EEE33C" transform="translate(257,55)"/>
+<path d="M0 0 C0.9900000000000091 0.3299999999999983 1.9799999999999898 0.6599999999999966 3 1 C2.009999999999991 1 1.0200000000000102 1 0 1 C0 0.6700000000000017 0 0.3400000000000034 0 0 Z " fill="#EEE33C" transform="translate(242,41)"/>
+<path d="M0 0 C0.9900000000000091 0.3299999999999983 1.9799999999999898 0.6599999999999966 3 1 C2.009999999999991 1 1.0200000000000102 1 0 1 C0 0.6700000000000017 0 0.3400000000000034 0 0 Z " fill="#EEE33C" transform="translate(236,36)"/>
+<path d="M0 0 C0.3300000000000125 0.6599999999999966 0.6599999999999966 1.3199999999999932 1 2 C0.3400000000000034 1.6699999999999875 -0.3199999999999932 1.3400000000000034 -1 1 C-0.6699999999999875 0.6699999999999875 -0.3400000000000034 0.3400000000000034 0 0 Z " fill="#EEE33C" transform="translate(252,251)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(98,285)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(93,283)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(86,280)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(84,279)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(82,278)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(80,277)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(222,274)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(75,274)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(70,271)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(67,269)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(233,34)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(230,32)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(227,30)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(224,28)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(217,24)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(215,23)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(213,22)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(211,21)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(209,20)"/>
+<path d="M0 0 C2 1 2 1 2 1 Z " fill="#EEE33C" transform="translate(207,19)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+<path d="" fill="#EEE33C" transform="translate(0,0)"/>
+</svg>

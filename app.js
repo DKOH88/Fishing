@@ -859,11 +859,11 @@
         }
     }
 
-    // moon 폴더 월령 아이콘 매핑 (0.png~29.png, 음력일-1 인덱스)
+    // moon 폴더 월령 아이콘 매핑 (0.svg~29.svg, 음력일-1 인덱스)
     function getMoonPhaseIconSrc(lunarDay) {
         const safeDay = (typeof lunarDay === 'number' && lunarDay >= 1 && lunarDay <= 30) ? lunarDay : 1;
-        const idx = safeDay - 1; // 음력 1일=0.png, 15일=14.png, 30일=29.png
-        return `moon/${idx}.png`;
+        const idx = safeDay - 1; // 음력 1일=0.svg, 15일=14.svg, 30일=29.svg
+        return `moon/${idx}.svg`;
     }
 
     function getMulddae(lunarDay) {
