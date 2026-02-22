@@ -1280,18 +1280,16 @@
     // 조차 기반 유속 퍼센트 계산 — 동적 윈도우 우선, 고정 테이블 fallback (2순위: crsp 없는 관측소용)
     function calcRangeFlowPct(diff, stationCode, rangeData) {
         if (diff == null || diff <= 0) return null;
-        let maxRange, minRange;
-        // 1순위: ±15일 윈도우 동적 범위
-        if (rangeData && rangeData.windowRange && rangeData.windowRange.max > rangeData.windowRange.min) {
+        let maxRange;
+        // 1순위: ±15일 윈도우 동적 최대값
+        if (rangeData && rangeData.windowRange && rangeData.windowRange.max > 0) {
             maxRange = rangeData.windowRange.max;
-            minRange = rangeData.windowRange.min;
         // 2순위: 고정 테이블
         } else {
             maxRange = MAX_TIDAL_RANGE[stationCode] || 300;
-            minRange = MIN_TIDAL_RANGE[stationCode] || Math.round(maxRange * 0.2);
         }
-        if (maxRange <= minRange) return null;
-        const pct = ((diff - minRange) / (maxRange - minRange)) * 100;
+        if (maxRange <= 0) return null;
+        const pct = (diff / maxRange) * 100;
         return Math.round(clamp(pct, 0, 100));
     }
 
@@ -1334,13 +1332,12 @@
         } catch { /* localStorage 사용 불가 시 무시 */ }
     }
 
-    // 유속(crsp) 직접 정규화: 해당일 max crsp를 ±15일 윈도우 max crsp의 min/max로 정규화
+    // 유속(crsp) 직접 정규화: 해당일 max crsp를 ±15일 윈도우 max crsp 대비 비율로 계산
     function calcCrspFlowPct(todayMaxSpeed, windowMaxSpeeds) {
         if (todayMaxSpeed == null || !windowMaxSpeeds || windowMaxSpeeds.length < 3) return null;
-        const wMin = safeMin(windowMaxSpeeds);
         const wMax = safeMax(windowMaxSpeeds);
-        if (wMax <= wMin) return null;
-        const pct = ((todayMaxSpeed - wMin) / (wMax - wMin)) * 100;
+        if (wMax <= 0) return null;
+        const pct = (todayMaxSpeed / wMax) * 100;
         return Math.round(clamp(pct, 0, 100));
     }
 
@@ -1370,6 +1367,7 @@
     }
 
     let mulddaeCardState = null;
+    let _pendingCrsp = null; // crsp가 mulddaeCardState보다 먼저 완료될 때 임시 저장
     _lastMulddaePct = null;
     _fishingIndexInfo = null;
 
@@ -1826,6 +1824,7 @@
         const myController = _fetchAllController;
 
         _setNavLoading(true);
+        _pendingCrsp = null; // 날짜 변경 시 이전 대기 crsp 초기화
         let chartLoadDone = false;
         setTideChartLoadStatus('loading');
 
@@ -1922,13 +1921,13 @@
             // 대체된 호출이면 UI 정리 스킵
             if (myController !== _fetchAllController) return;
             if (chartLoadDone) setTideChartLoadStatus('done');
-            _setNavLoading(false);
-            // 물때 스피너는 아래 Promise.allSettled에서 위젯 포함 해제
+            // 물때 스피너 + 네비 버튼은 아래 Promise.allSettled에서 유속 포함 완료 후 해제
         }
 
-        // 물때 스피너: 고저조+유속+위젯(기온/수온/풍향) 모두 완료 시 해제
+        // 물때 스피너 + 네비 버튼: 고저조+유속(crsp 포함)+위젯 모두 완료 시 해제
         Promise.allSettled([hlPromise, currentPromise, ..._widgetPromises]).then(() => {
             if (myController !== _fetchAllController) return; // 대체된 호출이면 무시
+            _setNavLoading(false);
             if (mulddaeBtn) { mulddaeBtn.disabled = false; mulddaeBtn.classList.remove('is-spinning'); }
             _widgetPromises = []; // 초기화
         });
@@ -1989,8 +1988,15 @@
                 stationCode,
                 mulddaeBase: getMulddaeInfo(dateStr),
                 diff,
-                rangePct
+                rangePct,
+                _crspApplied: false
             };
+            // crsp가 먼저 완료되어 대기 중이면 즉시 적용
+            if (_pendingCrsp && _pendingCrsp.dateStr === dateStr) {
+                mulddaeCardState.rangePct = _pendingCrsp.crspPct;
+                mulddaeCardState._crspApplied = true;
+                _pendingCrsp = null;
+            }
             renderMulddaeCardFromState();
 
             // 백그라운드: ±15일 동적 MIN/MAX 로 재계산 (non-blocking)
@@ -2001,7 +2007,7 @@
                         rangeData = await fetchLunarMonthDiffs(stationCode, dateStr);
                         if (rangeData) setCachedTidalDiffs(stationCode, dateStr, rangeData);
                     }
-                    if (rangeData && mulddaeCardState && mulddaeCardState.dateStr === dateStr && mulddaeCardState.stationCode === stationCode) {
+                    if (rangeData && mulddaeCardState && mulddaeCardState.dateStr === dateStr && mulddaeCardState.stationCode === stationCode && !mulddaeCardState._crspApplied) {
                         const dynamicPct = calcRangeFlowPct(diff, stationCode, rangeData);
                         if (dynamicPct != null) {
                             mulddaeCardState.rangePct = dynamicPct;
@@ -3617,26 +3623,31 @@
             renderCurrentViews(filtered, infoEl, fldEbbSummary, areaSummary);
             renderMulddaeCardFromState();
 
-            // 백그라운드: crsp 직접 정규화 (1순위 — 조차 기반보다 정확)
+            // crsp 직접 정규화 (1순위 — 조차 기반보다 정확): await하여 스피너 해제 전 완료 보장
             const crspSpeeds = timeFiltered.map(i => parseFloat(i.crsp) || 0).filter(s => s > 0);
             const todayMaxCrsp = crspSpeeds.length > 0 ? safeMax(crspSpeeds) : null;
-            if (todayMaxCrsp != null && cStation && mulddaeCardState) {
-                (async () => {
-                    try {
-                        const windowData = await fetchCrspWindow(cStation, dateStr);
-                        if (windowData && windowData.length >= 3) {
-                            const windowMaxSpeeds = windowData.map(d => d.maxCrsp);
-                            const crspPct = calcCrspFlowPct(todayMaxCrsp, windowMaxSpeeds);
-                            if (crspPct != null && mulddaeCardState && mulddaeCardState.dateStr === dateStr) {
+            if (todayMaxCrsp != null && cStation) {
+                try {
+                    const windowData = await fetchCrspWindow(cStation, dateStr);
+                    if (windowData && windowData.length >= 3) {
+                        const windowMaxSpeeds = windowData.map(d => d.maxCrsp);
+                        const crspPct = calcCrspFlowPct(todayMaxCrsp, windowMaxSpeeds);
+                        if (crspPct != null) {
+                            // mulddaeCardState가 이미 같은 날짜로 세팅되어 있으면 즉시 적용
+                            if (mulddaeCardState && mulddaeCardState.dateStr === dateStr) {
                                 mulddaeCardState.rangePct = crspPct;
+                                mulddaeCardState._crspApplied = true;
                                 renderMulddaeCardFromState();
-                                console.log(`[crsp 정규화] ${cStation} ${dateStr}: todayMax=${todayMaxCrsp.toFixed(1)}, window=[${safeMin(windowMaxSpeeds).toFixed(1)}~${safeMax(windowMaxSpeeds).toFixed(1)}], pct=${crspPct}%`);
+                            } else {
+                                // fetchTideHighLow가 아직 완료 안됨 → 임시 저장, 나중에 적용
+                                _pendingCrsp = { dateStr, crspPct };
                             }
+                            console.log(`[crsp 정규화] ${cStation} ${dateStr}: todayMax=${todayMaxCrsp.toFixed(1)}, window=[${safeMin(windowMaxSpeeds).toFixed(1)}~${safeMax(windowMaxSpeeds).toFixed(1)}], pct=${crspPct}%`);
                         }
-                    } catch (e) {
-                        console.warn('crsp 윈도우 정규화 실패, 조차 기반 유지:', e.message);
                     }
-                })();
+                } catch (e) {
+                    console.warn('crsp 윈도우 정규화 실패, 조차 기반 유지:', e.message);
+                }
             }
         } catch(e) {
             infoEl.innerHTML = `<div class="error-msg">조류 오류: ${escapeHTML(e.message)}</div>`;
