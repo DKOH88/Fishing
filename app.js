@@ -3624,10 +3624,10 @@
             ? (areaNeedsUnitConvert ? convertSpeedByUnit(areaSummary.maxSpeed) : areaSummary.maxSpeed)
             : null;
         const areaAvgText = areaSummary && Number.isFinite(areaSummary.avgSpeed)
-            ? `${areaAvg.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            ? `${areaAvg.toFixed(2)} ${areaUnit || ''}`
             : '-';
         const areaMaxText = areaSummary && Number.isFinite(areaSummary.maxSpeed)
-            ? `${areaMax.toFixed(2)}${areaUnit ? areaUnit : ''}`
+            ? `${areaMax.toFixed(2)} ${areaUnit || ''}`
             : '-';
         const areaDirText = areaSummary && areaSummary.dirText ? ` ${areaSummary.dirText}` : '';
         const areaLine = areaSummary
