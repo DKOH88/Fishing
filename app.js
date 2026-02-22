@@ -1367,7 +1367,7 @@
         _lastMulddaePct = mulddae.pct;
 
         mulddaeCard.style.display = '';
-        document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${mulddae.lunarMonth}월 ${mulddae.lunarDay}일`;
+        document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${dateStr.substring(0,4)}.${String(mulddae.lunarMonth).padStart(2,'0')}.${String(mulddae.lunarDay).padStart(2,'0')}`;
 
         const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
             : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
@@ -1403,6 +1403,15 @@
                     <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
+                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
+                <span class="mulddae-flow-desc">${desc}</span>
+            </div>
+            <div class="mulddae-flow-row">
+                <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
+            </div>
+            <div class="fishing-weather-row">
+                <span class="mulddae-flow-title">오늘의 날씨</span>
+                ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
                 <div class="mulddae-row1-widgets">
                 ${(() => {
                     const w = _weatherInfo;
@@ -1453,17 +1462,11 @@
                 })()}
                 </div>
             </div>
-            <div class="mulddae-flow-row">
-                <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
-            </div>
-            <div class="fishing-weather-row">
-                <span class="mulddae-flow-title">오늘의 유속</span>
-                <span class="mulddae-flow-desc">${desc}</span>
-                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
-                ${fishingText ? `<div class="fishing-index-wrap">${fishingText}</div>` : ''}
-            </div>
             <div class="mulddae-species">
                 ${(() => {
+                    function _speciesDetailLine(emoji, color, grade, desc) {
+                        return `<div class="species-detail-line">${emoji} <span style="color:${color};font-weight:600;">${grade}</span> <span>${desc}</span></div>`;
+                    }
                     // 쭈꾸미·문어는 한 줄로 합침
                     const jj = speciesFit.find(s => s.name === '쭈꾸미');
                     const mn = speciesFit.find(s => s.name === '문어');
@@ -1480,19 +1483,19 @@
                             <span style="color:var(--muted);margin:0 2px;">·</span>
                             <span class="species-name">문어</span>
                         </div>`;
-                        html += `<div class="species-detail-line">🌊 <span style="color:${jj.color};font-weight:600;">${jj.grade}</span> <span>${jj.desc}</span></div>`;
-                        if (jj.diffInfo) html += `<div class="species-detail-line">📏 <span style="color:${jj.diffColor};font-weight:600;">${jj.diffInfo.grade}</span> <span>${jj.diffInfo.desc}</span></div>`;
+                        html += _speciesDetailLine('🌊', jj.color, jj.grade, jj.desc);
+                        if (jj.diffInfo) html += _speciesDetailLine('📏', jj.diffColor, jj.diffInfo.grade, jj.diffInfo.desc);
                         html += `</div>`;
                     }
                     // 갑오징어 별도 카드
                     if (go) {
-                        const diffLine = go.diffInfo ? `<div class="species-detail-line">📏 <span style="color:${go.diffColor};font-weight:600;">${go.diffInfo.grade}</span> <span>${go.diffInfo.desc}</span></div>` : '';
+                        const diffLine = go.diffInfo ? _speciesDetailLine('📏', go.diffColor, go.diffInfo.grade, go.diffInfo.desc) : '';
                         html += `<div class="species-card-wrap">
                         <div class="species-card-row" style="background:${go.color}15;border:1px solid ${go.color}33;">
                             <span>${go.emoji}</span>
                             <span class="species-name">${go.name}</span>
                         </div>
-                        <div class="species-detail-line">🌊 <span style="color:${go.color};font-weight:600;">${go.grade}</span> <span>${go.desc}</span></div>${diffLine}</div>`;
+                        ${_speciesDetailLine('🌊', go.color, go.grade, go.desc)}${diffLine}</div>`;
                     }
                     return html;
                 })()}
@@ -2761,7 +2764,7 @@
     // ── 어종별 pct 판정 통합 상수 ──
     // grade 색상 (한 곳에서 관리)
     const GRADE_COLORS = {
-        '최상': '#69f0ae', '좋음': '#4fc3f7', '보통': '#ffa726', '비추': '#ff6b6b'
+        '추천': '#69f0ae', '좋음': '#4fc3f7', '보통': '#ffa726', '비추': '#ff6b6b'
     };
 
     // 어종별 판정 규칙 (임계값 + 설명 통합)
@@ -2772,15 +2775,15 @@
             // 고저차: 300 이하 최상, 300~500 보통, 500 이상 낮음
             useDiff: true,
             rules: [
-                { cond: (p, n) => p <= 40,                      grade: '최상', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 약한 조류, 쭈꾸미 최적!` },
-                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p <= 40,                      grade: '추천', desc: (p) => `약한 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 약한 조류, 쭈꾸미 최적!` },
+                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff <= 300)                return { grade: '최상', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 최적` };
-                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
+                if (diff <= 300)                return { grade: '추천', desc: `고저차 작음(${Math.round(diff)}cm)` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm)` };
+                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm)` };
             }
         },
         gapoh: {
@@ -2791,19 +2794,19 @@
             // SoSo: 사리 부근 70%↑ 또는 1물 약조류
             useDiff: true,
             rules: [
-                { cond: (p, n) => p >= 35 && p <= 60,           grade: '최상', desc: (p) => `적정 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
-                { cond: (p, n) => p >= 20 && p < 35,            grade: '보통', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
-                { cond: (p, n) => p > 60 && p <= 70,            grade: '보통', desc: (p) => `조류 강한 편(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
-                { cond: (p, n) => p < 20,                       grade: '비추', desc: (p) => `조류 부족(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
-                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p >= 35 && p <= 60,           grade: '추천', desc: (p) => `적정 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 적정 조류, 갑오징어 최적!` },
+                { cond: (p, n) => p >= 20 && p < 35,            grade: '보통', desc: (p) => `약한 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 약한 조류, 물돌이 타임 집중` },
+                { cond: (p, n) => p > 60 && p <= 70,            grade: '보통', desc: (p) => `조류 강한 편(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 조류 강한 편, 장애물 뒤 포인트 공략` },
+                { cond: (p, n) => p < 20,                       grade: '비추', desc: (p) => `조류 부족(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 조류 부족, 출조 비추천` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff >= 300 && diff <= 450) return { grade: '최상', desc: `고저차 적당(${Math.round(diff)}cm) ㅡ 최적` };
-                if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                if (diff > 450 && diff <= 550)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                if (diff > 550)                 return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
-                return { grade: '비추', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 비추천` };
+                if (diff >= 300 && diff <= 450) return { grade: '추천', desc: `고저차 적당(${Math.round(diff)}cm)` };
+                if (diff >= 200 && diff < 300)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm)` };
+                if (diff > 450 && diff <= 550)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm)` };
+                if (diff > 550)                 return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm)` };
+                return { grade: '비추', desc: `고저차 작음(${Math.round(diff)}cm)` };
             }
         },
         muneo: {
@@ -2813,15 +2816,15 @@
             useDiff: true,
             diffGroup: 'jjukkumi',
             rules: [
-                { cond: (p, n) => p <= 40,                      grade: '최상', desc: (p) => `약한 조류(${Math.round(p)}%) ㅡ 최적`, mulddaeDesc: (n) => `${n} — 약한 조류, 문어 최적!` },
-                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%) ㅡ 할 만함`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
-                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%) ㅡ 비추천`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
+                { cond: (p, n) => p <= 40,                      grade: '추천', desc: (p) => `약한 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 약한 조류, 문어 최적!` },
+                { cond: (p, n) => p > 40 && p <= 60,            grade: '보통', desc: (p) => `중간 조류(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 중간 조류, 할 만한 조건` },
+                { cond: () => true,                             grade: '비추', desc: (p) => `조류 강함(${Math.round(p)}%)`, mulddaeDesc: (n) => `${n} — 조류 강해 출조 비추천` }
             ],
             diffGrade: (diff) => {
                 if (diff == null || !Number.isFinite(diff)) return null;
-                if (diff <= 300)                return { grade: '최상', desc: `고저차 작음(${Math.round(diff)}cm) ㅡ 최적` };
-                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm) ㅡ 할 만함` };
-                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm) ㅡ 비추천` };
+                if (diff <= 300)                return { grade: '추천', desc: `고저차 작음(${Math.round(diff)}cm)` };
+                if (diff > 300 && diff <= 500)  return { grade: '보통', desc: `고저차 보통(${Math.round(diff)}cm)` };
+                return { grade: '비추', desc: `고저차 큼(${Math.round(diff)}cm)` };
             }
         }
     };
