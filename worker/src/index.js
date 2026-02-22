@@ -72,6 +72,32 @@ function getCorsHeaders(request) {
   };
 }
 
+// ==================== 위경도 → 기상청 격자 변환 ====================
+function latLonToGrid(lat, lon) {
+  const RE = 6371.00877, GRID = 5.0, SLAT1 = 30.0, SLAT2 = 60.0;
+  const OLON = 126.0, OLAT = 38.0, XO = 43, YO = 136;
+  const DEGRAD = Math.PI / 180.0;
+  const re = RE / GRID;
+  const slat1 = SLAT1 * DEGRAD, slat2 = SLAT2 * DEGRAD;
+  const olon = OLON * DEGRAD, olat = OLAT * DEGRAD;
+  let sn = Math.tan(Math.PI * 0.25 + slat2 * 0.5) / Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sn = Math.log(Math.cos(slat1) / Math.cos(slat2)) / Math.log(sn);
+  let sf = Math.tan(Math.PI * 0.25 + slat1 * 0.5);
+  sf = Math.pow(sf, sn) * Math.cos(slat1) / sn;
+  let ro = Math.tan(Math.PI * 0.25 + olat * 0.5);
+  ro = re * sf / Math.pow(ro, sn);
+  let ra = Math.tan(Math.PI * 0.25 + lat * DEGRAD * 0.5);
+  ra = re * sf / Math.pow(ra, sn);
+  let theta = lon * DEGRAD - olon;
+  if (theta > Math.PI) theta -= 2.0 * Math.PI;
+  if (theta < -Math.PI) theta += 2.0 * Math.PI;
+  theta *= sn;
+  return {
+    nx: Math.floor(ra * Math.sin(theta) + XO + 0.5),
+    ny: Math.floor(ro - ra * Math.cos(theta) + YO + 0.5),
+  };
+}
+
 // ==================== Helpers ====================
 
 function jsonResponse(data, status = 200, request = null) {
@@ -839,27 +865,6 @@ function findNearestAws(lat, lon) {
   return best;
 }
 
-/** 기상청 API허브 AWS 매분자료에서 기온(TA) 추출 */
-async function fetchAwsTemperature(stn, authKey) {
-  const now = new Date(Date.now() + 9 * 3600 * 1000);
-  const tm2 = now.toISOString().slice(0, 16).replace(/[-T:]/g, '').slice(0, 12); // YYYYMMDDHHMM
-  const awsUrl = `https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min`
-    + `?tm2=${tm2}&stn=${stn}&disp=1&help=2&authKey=${authKey}`;
-  const resp = await fetch(awsUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-  if (!resp.ok) return null;
-  const text = await resp.text();
-  // 마지막 유효 데이터 행 파싱 (CSV: YYYYMMDDHHMM,STN,WD1,WS1,WDS,WSS,WD10,WS10,TA,RE,...)
-  const lines = text.trim().split('\n').filter(l => l.match(/^\d{12},/));
-  if (lines.length === 0) return null;
-  const last = lines[lines.length - 1];
-  const cols = last.split(',');
-  if (cols.length < 9) return null;
-  const ta = parseFloat(cols[8]); // TA = 9번째 컬럼 (index 8)
-  if (ta <= -50) return null; // -50 이하 = 결측/에러
-  const re = parseFloat(cols[9]); // RE = 강수감지
-  return { ta: String(ta), re: re > 0 ? '1' : '0', obsTime: cols[0], stn: parseInt(cols[1]) };
-}
-
 // ==================== 수온 (Water Temperature) ====================
 async function fetchWaterTempForDate(apiKey, obsCode, dateStr) {
   const apiUrl = new URL('https://apis.data.go.kr/1192136/surveyWaterTemp/GetSurveyWaterTempApiService');
@@ -1054,75 +1059,77 @@ async function handleWeather(env, request, url, ctx) {
   const fcstBaseTime = String(fcstBaseHour).padStart(2, '0') + '30';
 
   try {
-    // ── 병렬 호출: (AWS→초단기실황) 와 (초단기예보 SKY) 동시 시작 ──
+    // ── 3-way 병렬: AWS기온 / 초단기실황 / 초단기예보(SKY) 동시 시작 ──
     let tmp = null, pty = null, wsd = null, vec = null, fcstTime = null, awsStn = null;
 
-    // A) AWS + 초단기실황 (순차 fallback)
-    const tempPromise = (async () => {
-      // 1) AWS 실관측 기온 (기상청 API허브)
-      if (apihubKey && lat && lon) {
-        const fLat = parseFloat(lat), fLon = parseFloat(lon);
-        if (!isNaN(fLat) && !isNaN(fLon)) {
-          awsStn = findNearestAws(fLat, fLon);
-          if (awsStn) {
-            try {
-              const aws = await fetchAwsTemperature(awsStn, apihubKey);
-              if (aws) {
-                tmp = aws.ta;
-                if (aws.re === '1') pty = '1';
-                fcstTime = aws.obsTime ? aws.obsTime.slice(8, 12) : null;
-              }
-            } catch (e) { console.log('[weather] AWS fetch error:', e.message); }
+    // 초단기실황 base 시간 계산 (실황/AWS 양쪽에서 공유)
+    let ncstBaseDate = yyyymmdd;
+    let ncstBaseHour = hh;
+    if (mm < 15) {
+      ncstBaseHour = hh - 1;
+      if (ncstBaseHour < 0) { ncstBaseHour = 23; const y = new Date(now.getTime() - 86400000); ncstBaseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
+    }
+    const ncstBaseTime = String(ncstBaseHour).padStart(2, '0') + '00';
+
+    // A) AWS 실관측 기온 — 2초 타임아웃, 실패해도 OK (실황이 커버)
+    let awsResult = null;
+    const awsPromise = (async () => {
+      if (!(apihubKey && lat && lon)) return;
+      const fLat = parseFloat(lat), fLon = parseFloat(lon);
+      if (isNaN(fLat) || isNaN(fLon)) return;
+      awsStn = findNearestAws(fLat, fLon);
+      if (!awsStn) return;
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 2000);
+        const awsNow = new Date(Date.now() + 9 * 3600 * 1000);
+        const tm2 = awsNow.toISOString().slice(0, 16).replace(/[-T:]/g, '').slice(0, 12);
+        const awsUrl = `https://apihub.kma.go.kr/api/typ01/cgi-bin/url/nph-aws2_min`
+          + `?tm2=${tm2}&stn=${awsStn}&disp=1&help=2&authKey=${apihubKey}`;
+        const resp = await fetch(awsUrl, {
+          signal: ctrl.signal,
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' },
+        });
+        clearTimeout(timer);
+        if (!resp.ok) return;
+        const text = await resp.text();
+        const lines = text.trim().split('\n').filter(l => l.match(/^\d{12},/));
+        if (lines.length === 0) return;
+        const cols = lines[lines.length - 1].split(',');
+        if (cols.length < 9) return;
+        const ta = parseFloat(cols[8]);
+        if (ta <= -50) return;
+        const re = parseFloat(cols[9]);
+        awsResult = { ta: String(ta), re: re > 0 ? '1' : '0', obsTime: cols[0], stn: parseInt(cols[1]) };
+      } catch (e) { /* 타임아웃 또는 네트워크 에러 — 무시 */ }
+    })();
+
+    // B) 초단기실황 (T1H, PTY, WSD, VEC) — AWS와 동시 시작, 캐시 우선
+    let ncstResult = null;
+    const ncstPromise = (async () => {
+      const ncstCacheKey = new Request(`https://cache.internal/ncst-v1-${nx}-${ny}-${ncstBaseDate}-${ncstBaseTime}`);
+      const ncstCached = await cache.match(ncstCacheKey);
+      if (ncstCached) {
+        ncstResult = await ncstCached.json();
+        return;
+      }
+      const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
+        + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
+        + `&base_date=${ncstBaseDate}&base_time=${ncstBaseTime}&nx=${nx}&ny=${ny}`;
+      try {
+        const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
+        if (ncstResp.ok) {
+          const ncstData = await ncstResp.json();
+          const items = ncstData?.response?.body?.items?.item;
+          if (items && Array.isArray(items)) {
+            ncstResult = items;
+            const ncstCacheResp = new Response(JSON.stringify(items), {
+              headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
+            });
+            ctx.waitUntil(cache.put(ncstCacheKey, ncstCacheResp));
           }
         }
-      }
-      // 2) 초단기실황 fallback (AWS 실패 시) — 1시간 캐시
-      if (tmp === null) {
-        let baseDate = yyyymmdd;
-        let baseHour = hh;
-        if (mm < 15) {
-          baseHour = hh - 1;
-          if (baseHour < 0) { baseHour = 23; const y = new Date(now.getTime() - 86400000); baseDate = y.toISOString().slice(0, 10).replace(/-/g, ''); }
-        }
-        const baseTime = String(baseHour).padStart(2, '0') + '00';
-        const ncstCacheKey = new Request(`https://cache.internal/ncst-v1-${nx}-${ny}-${baseDate}-${baseTime}`);
-        const ncstCached = await cache.match(ncstCacheKey);
-        if (ncstCached) {
-          const ncstItems = await ncstCached.json();
-          for (const item of ncstItems) {
-            if (item.category === 'T1H') tmp = item.obsrValue;
-            if (item.category === 'PTY') pty = item.obsrValue;
-            if (item.category === 'WSD') wsd = item.obsrValue;
-            if (item.category === 'VEC') vec = item.obsrValue;
-          }
-          fcstTime = baseTime;
-        } else {
-          const ncstUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst`
-            + `?serviceKey=${apiKey}&numOfRows=10&pageNo=1&dataType=JSON`
-            + `&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
-          try {
-            const ncstResp = await fetch(ncstUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' } });
-            if (ncstResp.ok) {
-              const ncstData = await ncstResp.json();
-              const ncstItems = ncstData?.response?.body?.items?.item;
-              if (ncstItems && Array.isArray(ncstItems)) {
-                for (const item of ncstItems) {
-                  if (item.category === 'T1H') tmp = item.obsrValue;
-                  if (item.category === 'PTY') pty = item.obsrValue;
-                  if (item.category === 'WSD') wsd = item.obsrValue;
-                  if (item.category === 'VEC') vec = item.obsrValue;
-                }
-                fcstTime = baseTime;
-                // 1시간 캐시 저장
-                const ncstCacheResp = new Response(JSON.stringify(ncstItems), {
-                  headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=3600' },
-                });
-                ctx.waitUntil(cache.put(ncstCacheKey, ncstCacheResp));
-              }
-            }
-          } catch (e) { /* fallback 실패 */ }
-        }
-      }
+      } catch (e) { /* 실황 실패 */ }
     })();
 
     // B) 초단기예보 (SKY 하늘상태) — 독립적이므로 A와 동시 시작, 30분 캐시
@@ -1170,10 +1177,25 @@ async function handleWeather(env, request, url, ctx) {
       }
     })();
 
-    // 두 호출 모두 완료 대기
-    await Promise.allSettled([tempPromise, skyPromise]);
+    // 3개 모두 완료 대기
+    await Promise.allSettled([awsPromise, ncstPromise, skyPromise]);
 
-    // 초단기예보 fallback 적용 (AWS/실황에서 못 가져온 값만)
+    // 결과 병합: AWS 우선 → 초단기실황 → 초단기예보 fallback
+    if (awsResult) {
+      tmp = awsResult.ta;
+      if (awsResult.re === '1') pty = '1';
+      fcstTime = awsResult.obsTime ? awsResult.obsTime.slice(8, 12) : null;
+    }
+    if (ncstResult && Array.isArray(ncstResult)) {
+      for (const item of ncstResult) {
+        if (item.category === 'T1H' && tmp === null) tmp = item.obsrValue;
+        if (item.category === 'PTY' && pty === null) pty = item.obsrValue;
+        if (item.category === 'WSD' && wsd === null) wsd = item.obsrValue;
+        if (item.category === 'VEC' && vec === null) vec = item.obsrValue;
+      }
+      if (fcstTime === null) fcstTime = ncstBaseTime;
+    }
+    // 초단기예보 fallback (AWS/실황 모두 없는 값만)
     if (tmp === null && fcstFallback.tmp) tmp = fcstFallback.tmp;
     if (pty === null && fcstFallback.pty) pty = fcstFallback.pty;
     if (wsd === null && fcstFallback.wsd) wsd = fcstFallback.wsd;
@@ -1829,87 +1851,147 @@ export default {
   },
 
   // ==================== Scheduled Handler (Cron Trigger) ====================
+  // cron 1: "*/5 * * * *" → 5분마다 실시간 데이터 (날씨/수온/풍향) 사전 캐싱
+  // cron 2: "0 17 * * *"  → 하루 1회 조위/유속 데이터 사전 캐싱 (02:00 KST)
   async scheduled(event, env, ctx) {
     const apiKey = env.DATA_GO_KR_API_KEY;
     if (!apiKey) {
       console.error('[precache] DATA_GO_KR_API_KEY not set');
       return;
     }
-
     const cache = caches.default;
 
-    // KST 기준 오늘 ~ +7일 날짜 생성 (Intl 기반)
-    const dates = [];
-    for (let d = 0; d < 8; d++) {
-      const target = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
-      const p = _kstParts(target);
-      dates.push(`${p.year}${p.month}${p.day}`);
-    }
+    // cron 분기: 매시 0분의 17:00 UTC 트리거 → 조위 precache, 그 외 → 실시간 precache
+    const cronStr = event.cron || '';
+    const isDailyTide = cronStr === '0 17 * * *';
 
-    // 중복 제거된 태스크 목록 생성
-    const tasks = buildPrecacheTasks(PRECACHE_PORTS, dates);
-    console.log(`[precache] Starting: ${tasks.length} tasks for ${dates.length} days (${dates[0]}~${dates[dates.length - 1]})`);
+    if (isDailyTide) {
+      // ────── 하루 1회: 조위 + 유속 + 바다낚시지수 ──────
+      const dates = [];
+      for (let d = 0; d < 8; d++) {
+        const target = new Date(Date.now() + d * 24 * 60 * 60 * 1000);
+        const p = _kstParts(target);
+        dates.push(`${p.year}${p.month}${p.day}`);
+      }
 
-    // 배치 실행 (5개 동시, 300ms 간격 — API 부하 방지)
-    const results = await runPrecacheBatches(tasks, apiKey, cache, 5, 300);
+      const tasks = buildPrecacheTasks(PRECACHE_PORTS, dates);
+      console.log(`[precache:tide] Starting: ${tasks.length} tasks for ${dates.length} days`);
+      const results = await runPrecacheBatches(tasks, apiKey, cache, 5, 300);
 
-    // 바다낚시지수 사전 캐싱
-    try {
-      const fishCacheKey = buildKhoaCacheKey('fishing-index', `sunsang_${dates[0]}`);
-      const fishCached = await cache.match(fishCacheKey);
-      if (!fishCached) {
-        const fishUrl = buildFishingIndexUrl(apiKey);
-        const fishResp = await fetch(fishUrl);
-        if (fishResp.ok) {
-          const fishData = await fishResp.json();
-          const fishResultCode = extractApiLevelResultCode(fishData);
-          if (!fishResultCode || fishResultCode === '00') {
-            const items = fishData?.body?.items?.item;
-            if (items && Array.isArray(items) && items.length > 0) {
-              const ttl = 3 * 60 * 60;
-              const resp = new Response(JSON.stringify(items), {
-                status: 200,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Cache-Control': `public, max-age=${ttl}`,
-                  'X-Cache': 'PRECACHE',
-                },
-              });
-              await cache.put(fishCacheKey, resp);
-              console.log('[precache] fishing-index cached');
+      // 바다낚시지수
+      try {
+        const fishCacheKey = buildKhoaCacheKey('fishing-index', `sunsang_${dates[0]}`);
+        const fishCached = await cache.match(fishCacheKey);
+        if (!fishCached) {
+          const fishUrl = buildFishingIndexUrl(apiKey);
+          const fishResp = await fetch(fishUrl);
+          if (fishResp.ok) {
+            const fishData = await fishResp.json();
+            const fishResultCode = extractApiLevelResultCode(fishData);
+            if (!fishResultCode || fishResultCode === '00') {
+              const items = fishData?.body?.items?.item;
+              if (items && Array.isArray(items) && items.length > 0) {
+                const resp = new Response(JSON.stringify(items), {
+                  status: 200,
+                  headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=10800', 'X-Cache': 'PRECACHE' },
+                });
+                await cache.put(fishCacheKey, resp);
+                console.log('[precache:tide] fishing-index cached');
+              }
             }
           }
         }
-      } else {
-        console.log('[precache] fishing-index already cached');
+      } catch (e) { console.error('[precache:tide] fishing-index error:', e.message); }
+
+      console.log(`[precache:tide] Done: cached=${results.cached}, hit=${results.hit}, error=${results.error}`);
+
+      // current-window
+      const seenCodes = new Set();
+      const cwTasks = PRECACHE_PORTS
+        .filter(p => p.currentCode && !seenCodes.has(p.currentCode) && seenCodes.add(p.currentCode))
+        .map(p => ({ code: p.currentCode }));
+      let cwCached = 0, cwHit = 0, cwErr = 0;
+      for (const task of cwTasks) {
+        for (const date of dates) {
+          const ck = buildCacheKey('current-window', task.code, date, 'default');
+          if (await cache.match(ck)) { cwHit++; continue; }
+          try {
+            const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/current-window?obsCode=${task.code}&reqDate=${date}`);
+            const fakeReq = new Request(fakeUrl.toString());
+            const resp = await handleCurrentWindowRequest(fakeUrl, env, ctx, fakeReq);
+            if (resp.status === 200) cwCached++; else cwErr++;
+          } catch (e) { cwErr++; }
+          await new Promise(r => setTimeout(r, 300));
+        }
       }
-    } catch (e) {
-      console.error('[precache] fishing-index error:', e.message);
-    }
+      console.log(`[precache:tide] current-window: cached=${cwCached}, hit=${cwHit}, error=${cwErr}`);
 
-    console.log(`[precache] Done: cached=${results.cached}, hit=${results.hit}, error=${results.error}, total=${results.total}`);
+    } else {
+      // ────── 5분마다: 날씨 + 수온 + 풍향 실시간 사전 캐싱 ──────
+      const apihubKey = env.KMA_APIHUB_KEY;
 
-    // current-window 사전 캐싱 (유속% 정규화용, 중복 currentCode 제거)
-    const seenCodes = new Set();
-    const cwTasks = PRECACHE_PORTS
-      .filter(p => p.currentCode && !seenCodes.has(p.currentCode) && seenCodes.add(p.currentCode))
-      .map(p => ({ code: p.currentCode }));
-    let cwCached = 0, cwHit = 0, cwErr = 0;
-    for (const task of cwTasks) {
-      for (const date of dates) {
-        const ck = buildCacheKey('current-window', task.code, date, 'default');
-        const existing = await cache.match(ck);
-        if (existing) { cwHit++; continue; }
-        try {
-          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/current-window?obsCode=${task.code}&reqDate=${date}`);
+      // 고유 격자좌표 + obsCode 추출 (중복 제거)
+      const gridSet = new Map(); // "nx,ny" → { nx, ny, lat, lon }
+      const obsSet = new Set();
+      for (const port of PRECACHE_PORTS) {
+        const { nx, ny } = latLonToGrid(parseFloat(port.lat), parseFloat(port.lon));
+        const key = `${nx},${ny}`;
+        if (!gridSet.has(key)) gridSet.set(key, { nx, ny, lat: port.lat, lon: port.lon });
+        obsSet.add(port.obsCode);
+      }
+
+      let wCached = 0, wHit = 0, wErr = 0;
+
+      // (A) 날씨 사전 캐싱 — 각 고유 격자에 대해 handleWeather 호출
+      const weatherTasks = [...gridSet.values()];
+      for (let i = 0; i < weatherTasks.length; i += 5) {
+        const batch = weatherTasks.slice(i, i + 5);
+        const batchResults = await Promise.allSettled(batch.map(async (g) => {
+          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/weather?nx=${g.nx}&ny=${g.ny}&lat=${g.lat}&lon=${g.lon}`);
           const fakeReq = new Request(fakeUrl.toString());
-          const resp = await handleCurrentWindowRequest(fakeUrl, env, ctx, fakeReq);
-          if (resp.status === 200) cwCached++;
-          else cwErr++;
-        } catch (e) { cwErr++; }
-        await new Promise(r => setTimeout(r, 300));
+          const resp = await handleWeather(env, fakeReq, fakeUrl, ctx);
+          return resp.status === 200 ? 'ok' : 'err';
+        }));
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled' && r.value === 'ok') wCached++; else wErr++;
+        }
+        if (i + 5 < weatherTasks.length) await new Promise(r => setTimeout(r, 200));
       }
+
+      // (B) 수온 사전 캐싱 — 각 고유 obsCode
+      let wtCached = 0, wtErr = 0;
+      const obsList = [...obsSet];
+      for (let i = 0; i < obsList.length; i += 5) {
+        const batch = obsList.slice(i, i + 5);
+        const batchResults = await Promise.allSettled(batch.map(async (code) => {
+          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/water-temp?obsCode=${code}`);
+          const fakeReq = new Request(fakeUrl.toString());
+          const resp = await handleWaterTemp(env, fakeReq, fakeUrl, ctx);
+          return resp.status === 200 ? 'ok' : 'err';
+        }));
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled' && r.value === 'ok') wtCached++; else wtErr++;
+        }
+        if (i + 5 < obsList.length) await new Promise(r => setTimeout(r, 200));
+      }
+
+      // (C) 풍향/풍속 사전 캐싱 — 각 고유 obsCode
+      let wdCached = 0, wdErr = 0;
+      for (let i = 0; i < obsList.length; i += 5) {
+        const batch = obsList.slice(i, i + 5);
+        const batchResults = await Promise.allSettled(batch.map(async (code) => {
+          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/wind?obsCode=${code}`);
+          const fakeReq = new Request(fakeUrl.toString());
+          const resp = await handleWind(env, fakeReq, fakeUrl, ctx);
+          return resp.status === 200 ? 'ok' : 'err';
+        }));
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled' && r.value === 'ok') wdCached++; else wdErr++;
+        }
+        if (i + 5 < obsList.length) await new Promise(r => setTimeout(r, 200));
+      }
+
+      console.log(`[precache:realtime] weather=${wCached}ok/${wErr}err, waterTemp=${wtCached}ok/${wtErr}err, wind=${wdCached}ok/${wdErr}err`);
     }
-    console.log(`[precache] current-window: cached=${cwCached}, hit=${cwHit}, error=${cwErr}`);
   }
 };
