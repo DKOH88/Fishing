@@ -4061,12 +4061,12 @@
                 const x = xScale.getPixelForValue(_nowIdx);
                 const { bottom } = chart.chartArea;
                 const c = chart.ctx;
-                // 상단 끝점: 유속 포인트 → 조위 포인트 → 차트 하단 (fallback)
+                // 상단 끝점: 조위 포인트 → 유속 포인트 → 차트 하단 (fallback)
                 let topY = bottom;
-                if (_nowSpeedY != null && chart.scales.ySpeed) {
-                    topY = chart.scales.ySpeed.getPixelForValue(_nowSpeedY);
-                } else if (_nowTideY != null && chart.scales.yTide) {
+                if (_nowTideY != null && chart.scales.yTide) {
                     topY = chart.scales.yTide.getPixelForValue(_nowTideY);
+                } else if (_nowSpeedY != null && chart.scales.ySpeed) {
+                    topY = chart.scales.ySpeed.getPixelForValue(_nowSpeedY);
                 }
                 c.save();
                 c.beginPath();
