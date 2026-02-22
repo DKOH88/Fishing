@@ -3977,11 +3977,10 @@
                     yScaleID: 'yTide',
                 };
             }
-            const _tValid = tideValid.length > 0 ? safeMin(tideValid) : 0;
             annotations['now_label'] = {
                 type: 'label', xValue: nowIdx,
-                yValue: hasTide ? _tValid : 0,
-                yAdjust: 19,
+                yValue: hasTide ? scales.yTide.min : 0,
+                yAdjust: 6,
                 content: nowLabel,
                 color: '#ffeb3b',
                 font: { size: 10, weight: 'bold' },
