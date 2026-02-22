@@ -1008,6 +1008,159 @@ async function handleWind(env, request, url, ctx) {
   }
 }
 
+// ==================== 자외선 지수 (UV Index) ====================
+// KMA 자외선 관측 네트워크 좌표 (관측소 수 매우 적음 — stn=0 전체 조회 후 가장 가까운 선택)
+const UV_STATIONS = {
+  13: [37.75, 128.89],    // 강릉 인근
+  108: [37.57, 126.97],   // 서울
+  131: [36.64, 127.44],   // 청주
+  132: [37.68, 128.72],   // 대관령
+  133: [35.89, 128.72],   // 대구
+  138: [36.03, 129.38],   // 포항
+  143: [36.37, 127.37],   // 대전
+  146: [35.82, 127.15],   // 전주
+  152: [35.56, 129.32],   // 울산
+  156: [35.17, 126.89],   // 광주
+  159: [35.10, 129.03],   // 부산
+  184: [33.51, 126.53],   // 제주
+  185: [33.29, 126.16],   // 고산(제주)
+  192: [35.16, 128.57],   // 진주
+  201: [37.34, 127.95],   // 강원 인근
+};
+
+/** UV 관측소 중 가장 가까운 관측소 번호 반환 */
+function findNearestUVStation(lat, lon, availableStns) {
+  let best = null, bestDist = Infinity;
+  for (const stn of availableStns) {
+    const coords = UV_STATIONS[stn];
+    if (!coords) continue;
+    const d = (lat - coords[0]) ** 2 + (lon - coords[1]) ** 2;
+    if (d < bestDist) { bestDist = d; best = stn; }
+  }
+  return best;
+}
+
+async function handleUVIndex(env, request, url, ctx) {
+  const lat = parseFloat(url.searchParams.get('lat'));
+  const lon = parseFloat(url.searchParams.get('lon'));
+  if (isNaN(lat) || isNaN(lon)) {
+    return jsonResponse({ error: 'lat, lon required' }, 400, request);
+  }
+
+  const kst = new Date(Date.now() + 9 * 3600000);
+  const hh = kst.getHours();
+
+  // 야간(18:00~06:00 KST) → API 호출 건너뛰기
+  if (hh < 6 || hh >= 18) {
+    const nightResp = jsonResponse({ uvIndex: null, message: 'NIGHTTIME' }, 200, request);
+    return addCorsHeaders(nightResp, request);
+  }
+
+  const today = kst.toISOString().slice(0, 10).replace(/-/g, '');
+  const hhStr = String(hh).padStart(2, '0');
+  const cacheKey = new Request(`https://tide-cache.internal/uv-index-v1/${lat.toFixed(2)}-${lon.toFixed(2)}/${today}/${hhStr}`);
+  const cache = caches.default;
+  const cached = await cache.match(cacheKey);
+  if (cached) return addCorsHeaders(cached, request);
+
+  const apihubKey = env.KMA_APIHUB_KEY;
+  if (!apihubKey) return jsonResponse({ error: 'Missing KMA_APIHUB_KEY' }, 500, request);
+
+  // 디버그 모드: 원본 텍스트 반환 (파서 검증용)
+  const debug = url.searchParams.get('debug');
+  if (debug) {
+    try {
+      const tm = `${today}${hhStr}00`;
+      const uvUrl = `https://apihub.kma.go.kr/api/typ01/url/kma_sfctm_uv.php?tm=${tm}&stn=0&help=${debug === '1' ? '1' : '0'}&authKey=${apihubKey}`;
+      const resp = await fetch(uvUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' },
+      });
+      const text = await resp.text();
+      return new Response(JSON.stringify({ url: uvUrl.replace(apihubKey, '***'), raw: text }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
+      });
+    } catch (e) {
+      return jsonResponse({ error: 'debug fetch failed: ' + e.message }, 500, request);
+    }
+  }
+
+  try {
+    // 현재 시각부터 2시간 전까지 재시도 (관측 지연 대비)
+    for (let back = 0; back <= 2; back++) {
+      const targetHour = hh - back;
+      if (targetHour < 6) break; // 야간 진입 방지
+      const tm = `${today}${String(targetHour).padStart(2, '0')}00`;
+
+      // stn=0: 전체 UV 관측소 데이터 조회
+      const uvUrl = `https://apihub.kma.go.kr/api/typ01/url/kma_sfctm_uv.php?tm=${tm}&stn=0&help=0&authKey=${apihubKey}`;
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 5000);
+      const resp = await fetch(uvUrl, {
+        signal: ctrl.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TideInfoBot/1.0)' },
+      });
+      clearTimeout(timer);
+      if (!resp.ok) continue;
+      const text = await resp.text();
+
+      // 텍스트 파싱: '#' 주석 제외, 데이터 라인 추출
+      // 컬럼: TM(0), STN(1), UVB(2), UVA(3), EUV(4), UV-B(5), UV-A(6), TEMP1(7), TEMP2(8)
+      const lines = text.trim().split('\n').filter(l => !l.startsWith('#') && l.trim().length > 0);
+      if (lines.length === 0) continue;
+
+      // 각 관측소 데이터 파싱
+      const stations = [];
+      for (const line of lines) {
+        const cols = line.trim().split(/\s+/);
+        if (cols.length < 6) continue;
+        const stnId = parseInt(cols[1]);
+        const euv = parseFloat(cols[4]);   // UV 지수 (-999 = null)
+        const uvb = parseFloat(cols[5]);   // UV-B 복사량
+        if (isNaN(stnId)) continue;
+
+        // EUV가 유효하면 사용, 아니면 UV-B를 대용 지표로 사용
+        const uvValue = (euv > 0 && euv < 900) ? euv : (uvb >= 0 ? uvb : null);
+        if (uvValue === null) continue;
+
+        stations.push({ stn: stnId, uvIndex: uvValue, obsTime: cols[0], isEUV: euv > 0 && euv < 900 });
+      }
+      if (stations.length === 0) continue;
+
+      // 가장 가까운 UV 관측소 선택
+      const availableStns = stations.map(s => s.stn);
+      const nearestStn = findNearestUVStation(lat, lon, availableStns);
+      // 매칭 실패 시 첫 번째 관측소 사용
+      const picked = nearestStn
+        ? stations.find(s => s.stn === nearestStn)
+        : stations[0];
+
+      const result = {
+        uvIndex: Math.round(picked.uvIndex * 10) / 10,
+        stn: picked.stn,
+        obsTime: picked.obsTime,
+        source: picked.isEUV ? 'EUV' : 'UV-B',
+        fetchedAt: kst.toISOString().replace('Z', '+09:00'),
+      };
+
+      const response = jsonResponse(result, 200, request);
+      const cr = new Response(response.body, response);
+      cr.headers.set('Cache-Control', 'public, max-age=3600');
+      ctx.waitUntil(cache.put(cacheKey, cr.clone()));
+      return addCorsHeaders(cr, request);
+    }
+
+    // 데이터 없음
+    const nodata = jsonResponse({ uvIndex: null, message: 'NODATA' }, 200, request);
+    const nr = new Response(nodata.body, nodata);
+    nr.headers.set('Cache-Control', 'public, max-age=1800');
+    ctx.waitUntil(cache.put(cacheKey, nr.clone()));
+    return addCorsHeaders(nr, request);
+  } catch (e) {
+    return jsonResponse({ error: e.message }, 500, request);
+  }
+}
+
 async function handleWeather(env, request, url, ctx) {
   const nx = url.searchParams.get('nx');
   const ny = url.searchParams.get('ny');
@@ -1678,6 +1831,11 @@ export default {
       return handleWind(env, request, url, ctx);
     }
 
+    // 자외선 지수 API: GET /api/uv-index?lat=36.38&lon=126.47
+    if (url.pathname === '/api/uv-index') {
+      return handleUVIndex(env, request, url, ctx);
+    }
+
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
     if (url.pathname === '/api/discharge-notice') {
       return handleDischargeNotice(ctx, request, env);
@@ -1772,6 +1930,7 @@ export default {
           '/api/discharge-notice',
           '/api/weather',
           '/api/water-temp',
+          '/api/uv-index',
           '/api/lunar',
           '/api/visitor'
         ]
@@ -1991,7 +2150,24 @@ export default {
         if (i + 5 < obsList.length) await new Promise(r => setTimeout(r, 200));
       }
 
-      console.log(`[precache:realtime] weather=${wCached}ok/${wErr}err, waterTemp=${wtCached}ok/${wtErr}err, wind=${wdCached}ok/${wdErr}err`);
+      // (D) 자외선 지수 사전 캐싱 — 각 고유 격자의 lat/lon 사용
+      let uvCached = 0, uvErr = 0;
+      const uvTasks = [...gridSet.values()];
+      for (let i = 0; i < uvTasks.length; i += 5) {
+        const batch = uvTasks.slice(i, i + 5);
+        const batchResults = await Promise.allSettled(batch.map(async (g) => {
+          const fakeUrl = new URL(`https://tide-api-proxy.odk297.workers.dev/api/uv-index?lat=${g.lat}&lon=${g.lon}`);
+          const fakeReq = new Request(fakeUrl.toString());
+          const resp = await handleUVIndex(env, fakeReq, fakeUrl, ctx);
+          return resp.status === 200 ? 'ok' : 'err';
+        }));
+        for (const r of batchResults) {
+          if (r.status === 'fulfilled' && r.value === 'ok') uvCached++; else uvErr++;
+        }
+        if (i + 5 < uvTasks.length) await new Promise(r => setTimeout(r, 200));
+      }
+
+      console.log(`[precache:realtime] weather=${wCached}ok/${wErr}err, waterTemp=${wtCached}ok/${wtErr}err, wind=${wdCached}ok/${wdErr}err, uv=${uvCached}ok/${uvErr}err`);
     }
   }
 };

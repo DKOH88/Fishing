@@ -42,7 +42,8 @@
     let _weatherInfo = null;
     let _waterTempInfo = null;
     let _windInfo = null;
-    let _widgetPromises = [];   // 기온/수온/풍향 로딩 추적 (스피너 연동)
+    let _uvInfo = null;
+    let _widgetPromises = [];   // 기온/수온/풍향/UV 로딩 추적 (스피너 연동)
     let _dischargePrefetch = null;
     let _dischargeLoaded = false;
     let _dischargeData = null;
@@ -503,6 +504,34 @@
         }
     }
 
+    /** UV 등급 판정: { label, cls } */
+    function getUVLevel(uv) {
+        if (uv <= 2)  return { label: '낮음',   cls: 'low' };
+        if (uv <= 5)  return { label: '보통',   cls: 'moderate' };
+        if (uv <= 7)  return { label: '높음',   cls: 'high' };
+        if (uv <= 10) return { label: '매우높음', cls: 'very-high' };
+        return { label: '위험',   cls: 'extreme' };
+    }
+
+    async function loadUVIndex() {
+        const port = _selectedPort;
+        if (!port) { _uvInfo = null; return; }
+        const wLat = port.wxLat || port.lat;
+        const wLon = port.wxLon || port.lon;
+        try {
+            const resp = await fetch(`${API_BASE}/api/uv-index?lat=${wLat}&lon=${wLon}`);
+            if (!resp.ok) throw new Error('API error');
+            const data = await resp.json();
+            _uvInfo = data;
+            if (typeof renderMulddaeCardFromState === 'function') {
+                renderMulddaeCardFromState();
+            }
+        } catch (e) {
+            console.warn('[uv-index] load failed:', e);
+            _uvInfo = null;
+        }
+    }
+
     function selectSearchResult(item) {
         const stationSel = document.getElementById('stationSelect');
         const currentSel = document.getElementById('currentSelect');
@@ -546,7 +575,7 @@
             document.getElementById('searchResults').classList.remove('show');
 
             // 자동 조회 (기온/수온/풍향 프로미스를 저장하여 스피너 연동)
-            _widgetPromises = [loadWeather(), loadWaterTemp(), loadWind()];
+            _widgetPromises = [loadWeather(), loadWaterTemp(), loadWind(), loadUVIndex()];
             fetchAll();
             return;
         }
@@ -951,7 +980,8 @@
                     })(),
                     loadWeather(),
                     loadWaterTemp(),
-                    loadWind()
+                    loadWind(),
+                    loadUVIndex()
                 ]);
             } catch(e) { console.error('물때 새로고침 오류:', e); }
             btn.classList.remove('is-spinning');
@@ -1457,6 +1487,21 @@
                         <div class="water-temp-text">
                             <span class="water-temp-label">수온</span>
                             <span class="water-temp-value">${tDisp}℃</span>
+                        </div>
+                    </div>`;
+                })()}
+                ${(() => {
+                    const uv = _uvInfo;
+                    if (!uv || uv.uvIndex == null) return '';
+                    const idx = parseFloat(uv.uvIndex);
+                    if (isNaN(idx)) return '';
+                    const idxDisp = Number.isInteger(idx) ? idx : idx.toFixed(1);
+                    const level = getUVLevel(idx);
+                    return `<div class="uv-widget uv-${level.cls}">
+                        <span class="uv-icon">☀️</span>
+                        <div class="uv-text">
+                            <span class="uv-label">UV ${level.label}</span>
+                            <span class="uv-value">${idxDisp}</span>
                         </div>
                     </div>`;
                 })()}

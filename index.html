@@ -328,6 +328,50 @@
         .wind-strong .wind-label { color: rgba(255,150,140,0.7); }
         .wind-strong .wind-value { color: #ff8a80; text-shadow: 0 0 8px rgba(255,110,100,0.3); }
 
+        /* 자외선 지수 위젯 */
+        .uv-widget {
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; min-width: 0;
+            border-radius: 10px; padding: 5px 6px;
+            font-size: 0.84em;
+            animation: weatherFadeIn 0.6s ease-out;
+            transition: all 0.3s ease;
+        }
+        .uv-widget:hover { transform: translateY(-1px); }
+        .uv-icon { font-size: 1.1em; line-height: 1; }
+        .uv-text { display: flex; flex-direction: column; line-height: 1.15; }
+        .uv-label { font-size: 0.72em; letter-spacing: 0.3px; }
+        .uv-value { font-size: 1em; font-weight: 700; }
+
+        /* UV 0~2 — 낮음 (연초록) */
+        .uv-low { background: linear-gradient(135deg, rgba(100,200,130,0.15), rgba(70,180,100,0.08)); border: 1px solid rgba(100,200,130,0.3); }
+        .uv-low:hover { background: linear-gradient(135deg, rgba(100,200,130,0.25), rgba(70,180,100,0.15)); border-color: rgba(100,200,130,0.5); box-shadow: 0 3px 12px rgba(100,200,130,0.15); }
+        .uv-low .uv-label { color: rgba(130,220,160,0.7); }
+        .uv-low .uv-value { color: #7cd8a0; text-shadow: 0 0 8px rgba(100,200,130,0.3); }
+
+        /* UV 3~5 — 보통 (노랑) */
+        .uv-moderate { background: linear-gradient(135deg, rgba(240,210,80,0.15), rgba(220,190,50,0.08)); border: 1px solid rgba(240,210,80,0.3); }
+        .uv-moderate:hover { background: linear-gradient(135deg, rgba(240,210,80,0.25), rgba(220,190,50,0.15)); border-color: rgba(240,210,80,0.5); box-shadow: 0 3px 12px rgba(240,210,80,0.15); }
+        .uv-moderate .uv-label { color: rgba(240,220,120,0.7); }
+        .uv-moderate .uv-value { color: #f0d870; text-shadow: 0 0 8px rgba(240,210,80,0.3); }
+
+        /* UV 6~7 — 높음 (주황) */
+        .uv-high { background: linear-gradient(135deg, rgba(255,170,60,0.15), rgba(240,140,30,0.08)); border: 1px solid rgba(255,170,60,0.3); }
+        .uv-high:hover { background: linear-gradient(135deg, rgba(255,170,60,0.25), rgba(240,140,30,0.15)); border-color: rgba(255,170,60,0.5); box-shadow: 0 3px 12px rgba(255,170,60,0.15); }
+        .uv-high .uv-label { color: rgba(255,190,100,0.7); }
+        .uv-high .uv-value { color: #ffb060; text-shadow: 0 0 8px rgba(255,170,60,0.3); }
+
+        /* UV 8~10 — 매우높음 (빨강) */
+        .uv-very-high { background: linear-gradient(135deg, rgba(255,110,100,0.15), rgba(230,80,70,0.08)); border: 1px solid rgba(255,110,100,0.3); }
+        .uv-very-high:hover { background: linear-gradient(135deg, rgba(255,110,100,0.25), rgba(230,80,70,0.15)); border-color: rgba(255,110,100,0.5); box-shadow: 0 3px 12px rgba(255,110,100,0.15); }
+        .uv-very-high .uv-label { color: rgba(255,150,140,0.7); }
+        .uv-very-high .uv-value { color: #ff8a80; text-shadow: 0 0 8px rgba(255,110,100,0.3); }
+
+        /* UV 11+ — 위험 (보라) */
+        .uv-extreme { background: linear-gradient(135deg, rgba(180,100,220,0.15), rgba(150,70,200,0.08)); border: 1px solid rgba(180,100,220,0.3); }
+        .uv-extreme:hover { background: linear-gradient(135deg, rgba(180,100,220,0.25), rgba(150,70,200,0.15)); border-color: rgba(180,100,220,0.5); box-shadow: 0 3px 12px rgba(180,100,220,0.15); }
+        .uv-extreme .uv-label { color: rgba(200,140,240,0.7); }
+        .uv-extreme .uv-value { color: #c88cf0; text-shadow: 0 0 8px rgba(180,100,220,0.3); }
+
         /* 방류 새 글 알림 뱃지 + 펄스 */
         .tab-btn .new-badge { display: none; background: var(--high); color: #fff; font-size: 0.65em; padding: 1px 6px; border-radius: 8px; margin-left: 4px; font-weight: 700; vertical-align: middle; }
         .tab-btn.has-new .new-badge { display: inline; }
