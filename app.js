@@ -3623,11 +3623,12 @@
         const areaMax = areaSummary && Number.isFinite(areaSummary.maxSpeed)
             ? (areaNeedsUnitConvert ? convertSpeedByUnit(areaSummary.maxSpeed) : areaSummary.maxSpeed)
             : null;
+        const areaUnitSep = areaNeedsUnitConvert ? ' ' : '';
         const areaAvgText = areaSummary && Number.isFinite(areaSummary.avgSpeed)
-            ? `${areaAvg.toFixed(2)} ${areaUnit || ''}`
+            ? `${areaAvg.toFixed(2)}${areaUnitSep}${areaUnit || ''}`
             : '-';
         const areaMaxText = areaSummary && Number.isFinite(areaSummary.maxSpeed)
-            ? `${areaMax.toFixed(2)} ${areaUnit || ''}`
+            ? `${areaMax.toFixed(2)}${areaUnitSep}${areaUnit || ''}`
             : '-';
         const areaDirText = areaSummary && areaSummary.dirText ? ` ${areaSummary.dirText}` : '';
         const areaLine = areaSummary
