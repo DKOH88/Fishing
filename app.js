@@ -1492,7 +1492,17 @@
                 })()}
                 ${(() => {
                     const uv = _uvInfo;
-                    if (!uv || uv.uvIndex == null) return '';
+                    if (!uv) return '';
+                    // 야간: uvIndex가 null이고 NIGHTTIME 메시지
+                    if (uv.uvIndex == null) {
+                        return `<div class="uv-widget uv-night">
+                            <span class="uv-icon">🌙</span>
+                            <div class="uv-text">
+                                <span class="uv-label">자외선 야간</span>
+                                <span class="uv-value">—</span>
+                            </div>
+                        </div>`;
+                    }
                     const idx = parseFloat(uv.uvIndex);
                     if (isNaN(idx)) return '';
                     const idxDisp = Number.isInteger(idx) ? idx : idx.toFixed(1);
@@ -1500,7 +1510,7 @@
                     return `<div class="uv-widget uv-${level.cls}">
                         <span class="uv-icon">☀️</span>
                         <div class="uv-text">
-                            <span class="uv-label">UV ${level.label}</span>
+                            <span class="uv-label">자외선 ${level.label}</span>
                             <span class="uv-value">${idxDisp}</span>
                         </div>
                     </div>`;
