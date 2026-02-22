@@ -184,7 +184,7 @@
         .region-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 1em; background: rgba(79,195,247,0.12); color: var(--primary); margin-left: 2px; vertical-align: middle; }
         .mulddae-card { display: flex; flex-direction: column; gap: 8px; }
         .mulddae-row1 { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; }
-        .mulddae-row1 .mulddae-flow-desc { font-size: 0.5em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .mulddae-row1 .mulddae-flow-desc { font-size: 0.7em; color: var(--muted); line-height: 1.4; }
         .mulddae-row1 .mulddae-pct-value { font-weight: 700; font-size: 1.1em; flex-shrink: 0; padding: 5px 6px; border-radius: 10px; background: rgba(255,255,255,0.08); line-height: 1.7; }
         .mulddae-row1-widgets { display: flex; align-items: center; gap: 3px; flex-wrap: nowrap; width: 100%; }
         .mulddae-flow-row { display: flex; align-items: center; gap: 8px; }
@@ -207,7 +207,7 @@
         .fishing-weather-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0; }
         .fishing-weather-row .mulddae-flow-desc { font-size: 0.76em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .fishing-weather-row .mulddae-pct-value { font-weight: 700; font-size: 0.88em; flex-shrink: 0; }
-        .fishing-index-wrap { font-size: 0.76em; position: relative; display: inline-block; }
+        .fishing-index-wrap { font-size: 0.84em; position: relative; display: inline-block; }
         .fishing-index-btn { color: #8fc4ff; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; user-select: none; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); border-radius: 16px; padding: 3px 10px; font-size: 0.88em; transition: all 0.2s; }
         .fishing-index-btn:hover { color: #b8daff; background: rgba(59,130,246,0.22); border-color: rgba(59,130,246,0.5); }
         .fishing-index-btn::after { content: '▾'; font-size: 0.7em; margin-left: 2px; opacity: 0.6; }
@@ -215,9 +215,9 @@
 
         /* 날씨 위젯 — 기본 레이아웃 */
         .weather-widget {
-            display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0;
-            border-radius: 10px; padding: 5px 9px;
-            font-size: 0.76em;
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; min-width: 0;
+            border-radius: 10px; padding: 5px 6px;
+            font-size: 0.84em;
             animation: weatherFadeIn 0.6s ease-out;
             transition: all 0.3s ease;
         }
@@ -266,9 +266,9 @@
 
         /* 수온 위젯 */
         .water-temp-widget {
-            display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0;
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; min-width: 0;
             border-radius: 10px; padding: 5px 6px;
-            font-size: 0.76em;
+            font-size: 0.84em;
             animation: weatherFadeIn 0.6s ease-out;
             transition: all 0.3s ease;
         }
@@ -298,9 +298,9 @@
 
         /* 풍향/풍속 위젯 */
         .wind-widget {
-            display: inline-flex; align-items: center; gap: 4px; flex: 1; min-width: 0;
+            display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; min-width: 0;
             border-radius: 10px; padding: 5px 6px;
-            font-size: 0.76em;
+            font-size: 0.84em;
             animation: weatherFadeIn 0.6s ease-out;
             transition: all 0.3s ease;
         }
@@ -344,8 +344,8 @@
         /* #23 인라인 스타일 → CSS 클래스 추출 */
         .unit-sm { font-size: 0.4em; }
         .center-muted { text-align: center; color: var(--muted); padding: 20px; }
-        .species-detail-line { display: flex; align-items: center; gap: 3px; padding: 1px 5px 2px 5px; font-size: 0.58em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .species-card-row { display: flex; align-items: center; gap: 3px; padding: 2px 5px; border-radius: 6px; font-size: 0.62em; }
+        .species-detail-line { display: flex; align-items: center; gap: 3px; padding: 1px 5px 2px 5px; font-size: 0.74em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .species-card-row { display: flex; align-items: center; justify-content: center; gap: 3px; padding: 2px 5px; border-radius: 6px; font-size: 0.89em; }
         .species-card-wrap { display: flex; flex-direction: column; flex: 1; min-width: 0; }
         .species-name { color: var(--text); font-weight: 600; }
         .legend-item { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }

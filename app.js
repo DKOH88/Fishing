@@ -1369,11 +1369,11 @@
         mulddaeCard.style.display = '';
         document.getElementById('mulddaeDate').textContent = `${mulddae.name} | 양력 ${dateStr.substring(0,4)}.${dateStr.substring(4,6)}.${dateStr.substring(6,8)} | 음력 ${dateStr.substring(0,4)}.${String(mulddae.lunarMonth).padStart(2,'0')}.${String(mulddae.lunarDay).padStart(2,'0')}`;
 
-        const desc = mulddae.num === '조금' ? '소조기 — 조차가 가장 작고 물살이 약합니다'
-            : mulddae.num === '무시' ? '조금 직후 — 물흐름이 가장 약한 날입니다'
-            : mulddae.name === '사리' && mulddae.pct >= 90 ? '대조기 — 조차가 크고 물살이 셉니다'
-            : mulddae.name === '사리' ? '사리 전후 — 조차가 점차 줄어듭니다'
-            : '들물 — 조금→사리 전환기, 조차가 커지는 중입니다';
+        const desc = mulddae.num === '조금' ? '*소조기<br>-조차가 가장 작고 물살이 약합니다'
+            : mulddae.num === '무시' ? '*조금 직후<br>-물흐름이 가장 약한 날입니다'
+            : mulddae.name === '사리' && mulddae.pct >= 90 ? '*대조기<br>-조차가 크고 물살이 셉니다'
+            : mulddae.name === '사리' ? '*사리 전후<br>-조차가 점차 줄어듭니다'
+            : '*들물<br>-조금→사리 전환기, 조차가 커지는 중입니다';
         const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct, diff);
 
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
