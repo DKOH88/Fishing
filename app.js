@@ -3232,9 +3232,16 @@
                     radius: 5, borderColor: '#fff', borderWidth: 1.5,
                 };
                 const _yMin = _pValid.length > 0 ? safeMin(_pValid) : 0;
+                // 충돌 회피: 저조 시간 라벨과 가까우면 현재 시간 라벨을 아래로 이동
+                let _nowLabelYAdj = 21;
+                Object.keys(annotations).forEach(key => {
+                    if (key.startsWith('hl_time_') && annotations[key].color === '#4ecdc4') {
+                        if (Math.abs(nowIdx - annotations[key].xValue) < 5) _nowLabelYAdj = 35;
+                    }
+                });
                 annotations['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMin,
-                    xAdjust: 0, yAdjust: 21,
+                    xAdjust: 0, yAdjust: _nowLabelYAdj,
                     content: nowLabel,
                     color: '#ffeb3b',
                     font: { size: 10, weight: 'bold' },
@@ -3382,9 +3389,16 @@
                 };
                 const _filteredT = cd.predicted.filter(v => v != null);
                 const _yMinT = _filteredT.length > 0 ? safeMin(_filteredT) : 0;
+                // 충돌 회피: 저조 시간 라벨과 가까우면 아래로 이동
+                let _nowYAdj2 = 22;
+                Object.keys(ann).forEach(key => {
+                    if (key.startsWith('hl_time_') && ann[key].color === '#4ecdc4') {
+                        if (Math.abs(nowIdx - ann[key].xValue) < 5) _nowYAdj2 = 35;
+                    }
+                });
                 ann['now_label'] = {
                     type: 'label', xValue: nowIdx, yValue: _yMinT,
-                    xAdjust: 0, yAdjust: 22,
+                    xAdjust: 0, yAdjust: _nowYAdj2,
                     content: nowLabel,
                     color: '#ffeb3b',
                     font: { size: 10, weight: 'bold' },
