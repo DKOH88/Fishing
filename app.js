@@ -1399,11 +1399,11 @@
 
         mulddaeEl.innerHTML = `
             <div class="mulddae-row1">
-                <div class="mulddae-badge" style="background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}22; color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">
+                <div class="mulddae-badge" style="background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}22; color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}; border:1px solid ${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}55;">
                     <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
-                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};">${pctText}</span>
+                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}; border:1px solid ${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}55;">${pctText}</span>
                 <span class="mulddae-flow-desc">${desc}</span>
             </div>
             <div class="mulddae-flow-row">
