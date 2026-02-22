@@ -2168,6 +2168,18 @@ export default {
       return handleBadatime(url, env, request, ctx);
     }
 
+    // Cron 실행 상태 조회: GET /api/cron-status
+    if (url.pathname === '/api/cron-status') {
+      const [daily, realtime] = await Promise.all([
+        env.VISITOR_STORE.get('cron:daily:last'),
+        env.VISITOR_STORE.get('cron:realtime:last'),
+      ]);
+      return jsonResponse({
+        daily: daily ? JSON.parse(daily) : null,
+        realtime: realtime ? JSON.parse(realtime) : null,
+      }, 200, request);
+    }
+
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
     if (url.pathname === '/api/discharge-notice') {
       return handleDischargeNotice(ctx, request, env);
@@ -2428,6 +2440,15 @@ export default {
       }
       console.log(`[precache:tide] current-window: cached=${cwCached}, hit=${cwHit}, error=${cwErr}`);
 
+      // KV에 실행 마커 기록 (colo 무관 검증용)
+      try {
+        await env.VISITOR_STORE.put('cron:daily:last', JSON.stringify({
+          ts: kstNowISO(),
+          tide: { cached: results.cached, hit: results.hit, error: results.error },
+          currentWindow: { cached: cwCached, hit: cwHit, error: cwErr },
+        }));
+      } catch (e) { console.error('[precache:tide] KV marker write failed:', e.message); }
+
     } else {
       // ────── 5분마다: 날씨 + 수온 + 풍향 실시간 사전 캐싱 ──────
       const apihubKey = env.KMA_APIHUB_KEY;
@@ -2511,6 +2532,14 @@ export default {
       }
 
       console.log(`[precache:realtime] weather=${wCached}ok/${wErr}err, waterTemp=${wtCached}ok/${wtErr}err, wind=${wdCached}ok/${wdErr}err, uv=${uvCached}ok/${uvErr}err`);
+
+      // KV에 실행 마커 기록 (colo 무관 검증용)
+      try {
+        await env.VISITOR_STORE.put('cron:realtime:last', JSON.stringify({
+          ts: kstNowISO(),
+          weather: wCached, waterTemp: wtCached, wind: wdCached, uv: uvCached,
+        }));
+      } catch (e) { console.error('[precache:realtime] KV marker write failed:', e.message); }
     }
   }
 };
