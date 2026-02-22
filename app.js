@@ -3989,7 +3989,7 @@
             if (hasTide && nowTideY != null) {
                 annotations['now_hline'] = {
                     type: 'line',
-                    xMin: 0, xMax: nowIdx,
+                    xMin: 2, xMax: nowIdx,
                     yMin: nowTideY, yMax: nowTideY,
                     yScaleID: 'yTide',
                     borderColor: 'rgba(56,189,248,0.35)',
@@ -4012,7 +4012,7 @@
             if (hasSpeed && nowSpeedRaw != null) {
                 annotations['now_hline_speed'] = {
                     type: 'line',
-                    xMin: nowIdx, xMax: allLabels.length - 1,
+                    xMin: nowIdx, xMax: allLabels.length - 3,
                     yMin: nowSpeedRaw, yMax: nowSpeedRaw,
                     yScaleID: 'ySpeed',
                     borderColor: 'rgba(52,211,153,0.35)',
