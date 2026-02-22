@@ -1,0 +1,64 @@
+name: badatime-monthly-full-validation
+
+on:
+  schedule:
+    # 09:35 KST on the 1st day of each month (UTC+9)
+    - cron: "35 0 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Full Integrity Validation
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          node Playwright/validate-badatime-integrity.js --concurrency 4 --delay-ms 150
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Print Validation Summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f data/validation/badatime_integrity_latest.json ]; then
+            node -e "const fs=require('fs');const j=JSON.parse(fs.readFileSync('data/validation/badatime_integrity_latest.json','utf8'));const s=j.summary||{};console.log('status=',s.status,'mismatches=',s.mismatches_count,'failed_jobs=',s.failed_jobs_count,'checked_rows=',s.checked_expected_rows);"
+          else
+            echo "No validation summary file found"
+          fi
+
+      - name: Upload Validation Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badatime-validation-${{ github.run_id }}
+          path: |
+            data/validation/**
+          if-no-files-found: warn
+
+      - name: Fail When Validation Fails
+        if: steps.validate.outputs.exit_code != '0'
+        run: |
+          echo "Validation failed (exit=${{ steps.validate.outputs.exit_code }})"
+          exit 1

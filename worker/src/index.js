@@ -47,6 +47,35 @@ const PRECACHE_PORTS = [
   { name: '군산',     obsCode: 'DT_0018', currentCode: '12JB14',  lat: '35.97', lon: '126.62' },
 ];
 
+// ==================== Badatime Weekly Incremental Validation (Worker Cron) ====================
+const BADATIME_BASE = 'https://www.badatime.com';
+const BADATIME_WEEKLY_DAYS = 14;
+const BADATIME_WEEKLY_CRON_A = '0 0 * * 1';   // Monday 09:00 KST
+const BADATIME_WEEKLY_CRON_B = '10 0 * * 1';  // Monday 09:10 KST
+const BADATIME_WEEKLY_REPORT_TTL = 60 * 60 * 24 * 45; // 45 days
+
+// User-selected major ports. Some ports share the same badatime station id.
+const BADATIME_WEEKLY_PORTS = [
+  { port: 'ochunhang', sid: '355' },
+  { port: 'anhung_sinjinhang', sid: '132' },
+  { port: 'yeongheungdo', sid: '151' },
+  { port: 'samgilpohang', sid: '144' },
+  { port: 'daecheonhang', sid: '126' },
+  { port: 'makgeompohang', sid: '1400' }, // mapped to 마검포방파제
+  { port: 'muchangpohang', sid: '236' },
+  { port: 'yeongmokhang', sid: '354' },
+  { port: 'incheon', sid: '158' },
+  { port: 'gumaehang', sid: '1385' },
+  { port: 'namdanghang', sid: '356' },
+  { port: 'daeyado', sid: '462' },
+  { port: 'baeksajanghang', sid: '175' },
+  { port: 'yeosu', sid: '41' },
+  { port: 'nokdonghang', sid: '219' },
+  { port: 'pyeongtaekhang', sid: '149' },
+  { port: 'jeongokhang', sid: '618' },
+  { port: 'hongwonhang', sid: '523' },
+];
+
 const ALLOWED_ORIGINS = new Set([
   'https://fishing-info.pages.dev',
 ]);
@@ -158,6 +187,250 @@ function getTodayStr() {
 function kstNowISO() {
   const p = _kstParts();
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}+09:00`;
+}
+
+function waitMs(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildRecentKstDateList(daysBack = BADATIME_WEEKLY_DAYS, includeToday = false) {
+  const p = _kstParts();
+  const baseKstMidnight = new Date(`${p.year}-${p.month}-${p.day}T00:00:00+09:00`);
+  const startOffset = includeToday ? 0 : 1;
+  const dates = [];
+
+  for (let i = 0; i < daysBack; i++) {
+    const d = new Date(baseKstMidnight.getTime() - (i + startOffset) * 24 * 60 * 60 * 1000);
+    const dp = _kstParts(d);
+    dates.push(`${dp.year}-${dp.month}-${dp.day}`);
+  }
+
+  return dates.sort();
+}
+
+function parseBadatimeDailyRows(html, ym) {
+  const rowMatches = [...html.matchAll(/<tr[^>]*class="day-row"[^>]*>([\s\S]*?)<\/tr>/gi)];
+  const out = new Map();
+
+  for (const rowMatch of rowMatches) {
+    const rowHtml = rowMatch[1];
+    const dayCellHtml = (rowHtml.match(/class="day-cell"[\s\S]*?>([\s\S]*?)<\/td>/i) || [])[1] || '';
+    const day = parseInt((dayCellHtml.match(/(\d{1,2})\s*\(/) || [])[1], 10);
+    if (!Number.isFinite(day)) continue;
+
+    const flow = parseInt((rowHtml.match(/class="progress-bar"[^>]*data-value="(\d{1,3})"/i) || [])[1], 10);
+    if (!Number.isFinite(flow)) continue;
+
+    const date = `${ym}-${String(day).padStart(2, '0')}`;
+    if (!out.has(date)) out.set(date, flow);
+  }
+
+  return out;
+}
+
+async function fetchBadatimeHtml(url, retries = 4) {
+  let lastErr = null;
+
+  for (let i = 1; i <= retries; i++) {
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'text/html,*/*',
+        },
+      });
+
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+
+      return await resp.text();
+    } catch (e) {
+      lastErr = e;
+      await waitMs(500 * i);
+    }
+  }
+
+  throw lastErr || new Error('badatime fetch failed');
+}
+
+function countByField(list, key) {
+  const out = {};
+  for (const item of list) {
+    const k = String(item?.[key] || '');
+    out[k] = (out[k] || 0) + 1;
+  }
+  return out;
+}
+
+async function runBadatimeWeeklyIncrementalValidation(env, cronStr, partition = 0) {
+  if (!env.VISITOR_STORE) {
+    console.error('[badatime:weekly] VISITOR_STORE not configured');
+    return;
+  }
+
+  const partitionPorts = BADATIME_WEEKLY_PORTS.filter((_, idx) => idx % 2 === partition);
+  const targetDates = buildRecentKstDateList(BADATIME_WEEKLY_DAYS, false);
+  const targetMonths = [...new Set(targetDates.map((d) => d.slice(0, 7)))].sort();
+
+  const sidToPorts = new Map();
+  for (const entry of partitionPorts) {
+    if (!sidToPorts.has(entry.sid)) sidToPorts.set(entry.sid, []);
+    sidToPorts.get(entry.sid).push(entry.port);
+  }
+
+  const mismatches = [];
+  const failedJobs = [];
+  const skippedNoKv = [];
+  let checkedRows = 0;
+  let matchedRows = 0;
+  let liveRowsParsed = 0;
+
+  const sidList = [...sidToPorts.keys()].sort((a, b) => Number(a) - Number(b));
+  console.log(
+    `[badatime:weekly] start cron=${cronStr}, partition=${partition}, ports=${partitionPorts.length}, stations=${sidList.length}, dates=${targetDates[0]}..${targetDates[targetDates.length - 1]}`
+  );
+
+  for (const sid of sidList) {
+    const ports = sidToPorts.get(sid);
+    const kvKey = `bt:${sid}`;
+    const urlBase = `${BADATIME_BASE}/${sid}/daily`;
+
+    let stationData = null;
+    try {
+      const raw = await env.VISITOR_STORE.get(kvKey);
+      if (!raw) {
+        skippedNoKv.push({
+          station_id: sid,
+          ports,
+          reason: 'station not found in KV',
+        });
+        continue;
+      }
+      stationData = JSON.parse(raw);
+    } catch (e) {
+      failedJobs.push({
+        station_id: sid,
+        ports,
+        ym: '*',
+        url: `${urlBase}/YYYY-MM`,
+        error: `KV read error: ${e?.message || String(e)}`,
+      });
+      continue;
+    }
+
+    const liveByDate = new Map();
+    const failedMonths = new Set();
+    for (const ym of targetMonths) {
+      const pageUrl = `${urlBase}/${ym}`;
+      try {
+        const html = await fetchBadatimeHtml(pageUrl, 4);
+        const parsed = parseBadatimeDailyRows(html, ym);
+        liveRowsParsed += parsed.size;
+        for (const [date, pct] of parsed.entries()) {
+          liveByDate.set(date, pct);
+        }
+      } catch (e) {
+        failedMonths.add(ym);
+        failedJobs.push({
+          station_id: sid,
+          ports,
+          ym,
+          url: pageUrl,
+          error: e?.message || String(e),
+        });
+      }
+      await waitMs(120);
+    }
+
+    for (const date of targetDates) {
+      if (failedMonths.has(date.slice(0, 7))) continue;
+
+      const storedRaw = stationData?.[date];
+      const storedPct = Number(storedRaw);
+      checkedRows++;
+
+      if (!Number.isFinite(storedPct)) {
+        mismatches.push({
+          type: 'missing_in_kv',
+          station_id: sid,
+          ports,
+          date,
+          ym: date.slice(0, 7),
+          stored_flow_pct: '',
+          live_flow_pct: liveByDate.has(date) ? liveByDate.get(date) : '',
+        });
+        continue;
+      }
+
+      const livePct = liveByDate.get(date);
+      if (!Number.isFinite(livePct)) {
+        mismatches.push({
+          type: 'missing_on_live',
+          station_id: sid,
+          ports,
+          date,
+          ym: date.slice(0, 7),
+          stored_flow_pct: Math.round(storedPct),
+          live_flow_pct: '',
+        });
+        continue;
+      }
+
+      if (Math.round(storedPct) !== livePct) {
+        mismatches.push({
+          type: 'flow_changed',
+          station_id: sid,
+          ports,
+          date,
+          ym: date.slice(0, 7),
+          stored_flow_pct: Math.round(storedPct),
+          live_flow_pct: livePct,
+        });
+        continue;
+      }
+
+      matchedRows++;
+    }
+  }
+
+  const summary = {
+    status: mismatches.length === 0 && failedJobs.length === 0 ? 'PASS' : 'FAIL',
+    generated_at: new Date().toISOString(),
+    mode: 'weekly_incremental_major_ports',
+    cron: cronStr,
+    partition,
+    ports_in_partition: partitionPorts,
+    checked_station_count: sidList.length,
+    checked_expected_rows: checkedRows,
+    matched_rows: matchedRows,
+    live_rows_parsed: liveRowsParsed,
+    mismatches_count: mismatches.length,
+    failed_jobs_count: failedJobs.length,
+    skipped_no_kv_count: skippedNoKv.length,
+    mismatch_by_type: countByField(mismatches, 'type'),
+    window: {
+      from: targetDates[0],
+      to: targetDates[targetDates.length - 1],
+      days: targetDates.length,
+    },
+  };
+
+  const report = { summary, mismatches, failed_jobs: failedJobs, skipped_no_kv: skippedNoKv };
+  const keyLabel = partition === 0 ? 'a' : 'b';
+  const reportKey = `badatime_validation:weekly:${keyLabel}:latest`;
+  const reportHistoryKey = `badatime_validation:weekly:${keyLabel}:${summary.generated_at.slice(0, 10)}`;
+
+  try {
+    await env.VISITOR_STORE.put(reportKey, JSON.stringify(report), { expirationTtl: BADATIME_WEEKLY_REPORT_TTL });
+    await env.VISITOR_STORE.put(reportHistoryKey, JSON.stringify(report), { expirationTtl: BADATIME_WEEKLY_REPORT_TTL });
+  } catch (e) {
+    console.error('[badatime:weekly] failed to write report KV:', e?.message || String(e));
+  }
+
+  console.log(
+    `[badatime:weekly] done status=${summary.status}, mismatches=${summary.mismatches_count}, failed=${summary.failed_jobs_count}, checkedRows=${checkedRows}, matched=${matchedRows}`
+  );
 }
 
 async function hashIP(ip) {
@@ -2072,6 +2345,19 @@ export default {
   // cron 1: "*/5 * * * *" → 5분마다 실시간 데이터 (날씨/수온/풍향) 사전 캐싱
   // cron 2: "0 17 * * *"  → 하루 1회 조위/유속 데이터 사전 캐싱 (02:00 KST)
   async scheduled(event, env, ctx) {
+    const cronStr = event.cron || '';
+
+    // weekly incremental validation for major ports (split to keep request budget small)
+    if (cronStr === BADATIME_WEEKLY_CRON_A || cronStr === BADATIME_WEEKLY_CRON_B) {
+      const partition = cronStr === BADATIME_WEEKLY_CRON_A ? 0 : 1;
+      try {
+        await runBadatimeWeeklyIncrementalValidation(env, cronStr, partition);
+      } catch (e) {
+        console.error('[badatime:weekly] unhandled error:', e?.message || String(e));
+      }
+      return;
+    }
+
     const apiKey = env.DATA_GO_KR_API_KEY;
     if (!apiKey) {
       console.error('[precache] DATA_GO_KR_API_KEY not set');
@@ -2079,8 +2365,6 @@ export default {
     }
     const cache = caches.default;
 
-    // cron 분기: 매시 0분의 17:00 UTC 트리거 → 조위 precache, 그 외 → 실시간 precache
-    const cronStr = event.cron || '';
     const isDailyTide = cronStr === '0 17 * * *';
 
     if (isDailyTide) {

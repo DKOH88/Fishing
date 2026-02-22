@@ -10,4 +10,9 @@ id = "cd2306ce540a4402907f4610b1e19368"
 enabled = true
 
 [triggers]
-crons = ["*/5 * * * *", "0 17 * * *"]   # 5분마다 실시간(날씨/수온/풍향) + 매일 02:00 KST 조위 사전 캐싱
+crons = [
+  "*/5 * * * *",   # realtime precache
+  "0 17 * * *",    # daily tide/current precache (02:00 KST)
+  "0 0 * * 1",     # weekly badatime incremental validation (partition A, 09:00 KST Monday)
+  "10 0 * * 1"     # weekly badatime incremental validation (partition B, 09:10 KST Monday)
+]
