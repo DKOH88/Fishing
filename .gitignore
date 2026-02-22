@@ -11,3 +11,9 @@ aws_*.js
 nul
 worker/nul
 기상청_*.pdf
+node_modules/
+package-lock.json
+test-results/
+Playwright/*.png
+scripts/badatime-bulk.json
+analysis/

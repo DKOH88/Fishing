@@ -1380,6 +1380,60 @@ async function handleWeather(env, request, url, ctx) {
 
 // ==================== 방류/급수 알림 크롤링 (discharge-notice) ====================
 
+// ==================== 바다타임 유속% 조회 ====================
+// KV 키: bt:{station_id} → {"2025-01-01":78,"2025-01-02":80,...}
+async function handleBadatime(url, env, request, ctx) {
+  const sid = url.searchParams.get('sid');
+  const date = url.searchParams.get('date');
+
+  if (!sid || !/^\d{1,4}$/.test(sid)) {
+    return jsonResponse({ error: 'Invalid sid (badatime station_id)' }, 400, request);
+  }
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return jsonResponse({ error: 'Invalid date (expected YYYY-MM-DD)' }, 400, request);
+  }
+
+  // Cache API로 응답 캐싱 (정적 데이터이므로 30일)
+  const cache = caches.default;
+  const cacheKey = new Request(`https://cache.internal/badatime/${sid}/${date}`);
+  const cached = await cache.match(cacheKey);
+  if (cached) {
+    const resp = addCorsHeaders(cached, request);
+    resp.headers.set('X-Cache', 'HIT');
+    return resp;
+  }
+
+  // KV에서 해당 station 데이터 읽기
+  const kvKey = `bt:${sid}`;
+  const raw = await env.VISITOR_STORE.get(kvKey);
+  if (!raw) {
+    return jsonResponse({ flow_pct: null, source: 'badatime', error: 'station not found' }, 200, request);
+  }
+
+  let stationData;
+  try {
+    stationData = JSON.parse(raw);
+  } catch {
+    return jsonResponse({ flow_pct: null, source: 'badatime', error: 'parse error' }, 200, request);
+  }
+
+  const flowPct = stationData[date] ?? null;
+
+  const ttl = 30 * 24 * 60 * 60; // 30일 (정적 데이터)
+  const response = new Response(JSON.stringify({ flow_pct: flowPct, source: 'badatime' }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': `public, max-age=${ttl}`,
+      'X-Cache': 'MISS',
+      ...getCorsHeaders(request),
+    },
+  });
+
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
 async function handleDischargeNotice(ctx, request, env) {
   // 30분 캐시
   const cache = caches.default;
@@ -1836,6 +1890,11 @@ export default {
       return handleUVIndex(env, request, url, ctx);
     }
 
+    // 바다타임 유속% 조회: GET /api/badatime?sid={station_id}&date={YYYY-MM-DD}
+    if (url.pathname === '/api/badatime') {
+      return handleBadatime(url, env, request, ctx);
+    }
+
     // 방류/급수 알림 크롤링: GET /api/discharge-notice
     if (url.pathname === '/api/discharge-notice') {
       return handleDischargeNotice(ctx, request, env);
@@ -1923,7 +1982,7 @@ export default {
         endpoints: [
           '/api/tide-hilo', '/api/tide-level', '/api/current',
           '/api/tide-time', '/api/current-fld-ebb',
-          '/api/batch-tide',
+          '/api/batch-tide', '/api/badatime',
           '/api/current-window',
           '/api/fishing-index',
           '/api/khoa/current-point', '/api/khoa/current-area',

@@ -1175,6 +1175,102 @@
         'DT_0042': 70, 'IE_0060': 45, 'IE_0061': 80, 'IE_0062': 170,
     };
 
+    // ==================== 바다타임 station_id 매핑 (DT_XXXX → 바다타임 번호) ====================
+    const BADATIME_STATION_MAP = {
+        // 인천/경기
+        'DT_0001': '158',   // 인천
+        'DT_0052': '158',   // 인천송도 → 인천
+        'DT_0044': '159',   // 영종대교 → 영종도
+        'DT_0032': '163',   // 강화대교 → 강화외포
+        'DT_0043': '151',   // 영흥도
+        'DT_0093': '154',   // 소무의도
+        'DT_0065': '141',   // 덕적도 → 덕적도진리
+        'DT_0066': null,     // 향화도 (바다타임 미지원)
+        'DT_0002': '149',   // 평택
+        'DT_0008': '157',   // 안산 → 안산탄도
+        // 충남/전북
+        'DT_0050': '231',   // 태안
+        'DT_0067': '132',   // 안흥 → 안흥신진도
+        'DT_0017': '145',   // 대산
+        'DT_0025': '127',   // 보령
+        'DT_0051': '123',   // 서천마량
+        'DT_0024': '121',   // 장항
+        'DT_0018': '120',   // 군산 → 군산외항
+        'DT_0068': '112',   // 위도
+        'DT_0037': '124',   // 어청도
+        // 전남서부
+        'DT_0007': '105',   // 목포
+        'DT_0035': '91',    // 흑산도
+        'DT_0094': '88',    // 서거차도 → 서거차항
+        // 전남동부
+        'DT_0028': '84',    // 진도 → 진도수품
+        'DT_0027': '60',    // 완도
+        'DT_0026': '220',   // 고흥발포
+        'DT_0092': null,     // 여호항 (바다타임 미지원)
+        'DT_0016': '41',    // 여수
+        'DT_0049': null,     // 광양 (바다타임 미지원)
+        'DT_0031': '51',    // 거문도
+        // 경남
+        'DT_0061': '31',    // 삼천포
+        'DT_0014': '25',    // 통영
+        'DT_0029': '395',   // 거제도 → 거제외포
+        'DT_0063': '5',     // 가덕도
+        'DT_0062': '8',     // 마산
+        'DT_0056': '233',   // 부산항신항 → 부산신항
+        'DT_0005': '1',     // 부산
+        // 동해
+        'DT_0020': '214',   // 울산
+        'DT_0091': '208',   // 포항
+        'DT_0039': null,     // 왕돌초 (바다타임 미지원)
+        'DT_0011': '203',   // 후포
+        'DT_0057': '196',   // 동해항
+        'DT_0006': '195',   // 묵호
+        'DT_0012': '192',   // 속초
+        'DT_0013': '199',   // 울릉도 → 울릉도저동
+        // 제주
+        'DT_0004': '67',    // 제주
+        'DT_0022': '71',    // 성산포
+        'DT_0010': '72',    // 서귀포
+        'DT_0023': '73',    // 모슬포
+        'DT_0021': '66',    // 추자도
+        // 해양과학기지
+        'DT_0042': null,     // 교본초 (바다타임 미지원)
+        'IE_0060': '221',   // 이어도
+        'IE_0061': null,     // 신안가거초 (바다타임 미지원)
+        'IE_0062': '387',   // 옹진소청초 → 소청도
+    };
+
+    // 바다타임 유속% 캐시 (메모리)
+    const _badatimeCache = {};
+
+    /**
+     * 바다타임 유속% 조회 (Worker → KV)
+     * @param {string} stationCode DT_XXXX
+     * @param {string} dateStr YYYYMMDD
+     * @returns {Promise<number|null>} flow_pct or null
+     */
+    async function fetchBadatimeFlowPct(stationCode, dateStr) {
+        const sid = BADATIME_STATION_MAP[stationCode];
+        if (!sid) return null;
+
+        const isoDate = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+        const cacheKey = `${sid}:${isoDate}`;
+        if (_badatimeCache[cacheKey] !== undefined) return _badatimeCache[cacheKey];
+
+        try {
+            const resp = await fetch(`${API_BASE}/api/badatime?sid=${sid}&date=${isoDate}`);
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const data = await resp.json();
+            const pct = (data && data.flow_pct != null) ? data.flow_pct : null;
+            _badatimeCache[cacheKey] = pct;
+            return pct;
+        } catch (e) {
+            console.warn('[badatime] fetch 실패:', e.message);
+            _badatimeCache[cacheKey] = null;
+            return null;
+        }
+    }
+
     // ==================== 물흐름 퍼센트 유틸리티 ====================
     function clamp(v, lo, hi) {
         return Math.max(lo, Math.min(hi, v));
@@ -1344,6 +1440,30 @@
         return Math.round(clamp(pct, 0, 100));
     }
 
+    // 조차 MinMax(기본) + 유속(crsp) 정규화(보정) 결합
+    // - 조차를 주축으로 두고(crsp는 보조), 과도한 보정은 delta clamp로 제한
+    function calcCorrectedFlowPct(rangePct, crspPct) {
+        const hasRange = Number.isFinite(rangePct);
+        const hasCrsp = Number.isFinite(crspPct);
+        if (!hasRange && !hasCrsp) return null;
+        if (!hasRange) return clamp(Math.round(crspPct), 0, 100);
+        if (!hasCrsp) return clamp(Math.round(rangePct), 0, 100);
+
+        const RANGE_W = 0.92;
+        const CRSP_W = 0.08;
+        const blended = (rangePct * RANGE_W) + (crspPct * CRSP_W);
+        const delta = clamp(blended - rangePct, -10, 14);
+        return clamp(Math.round(rangePct + delta), 0, 100);
+    }
+
+    function updateMulddaeFlowPctState() {
+        if (!mulddaeCardState) return;
+        mulddaeCardState.correctedPct = calcCorrectedFlowPct(
+            mulddaeCardState.rangePct,
+            mulddaeCardState.crspPct
+        );
+    }
+
     // Worker /api/current-window 엔드포인트에서 ±15일 일별 max crsp 조회
     async function fetchCrspWindow(currentStationCode, dateStr) {
         const cached = getCachedCrspWindow(currentStationCode, dateStr);
@@ -1370,8 +1490,18 @@
     }
 
     let mulddaeCardState = null;
+    let latestMulddaeCrspState = null;
     _lastMulddaePct = null;
     _fishingIndexInfo = null;
+
+    function applyLatestCrspToMulddaeState() {
+        if (!mulddaeCardState || !latestMulddaeCrspState) return;
+        if (mulddaeCardState.dateStr !== latestMulddaeCrspState.dateStr) return;
+        if (mulddaeCardState.stationCode !== latestMulddaeCrspState.stationCode) return;
+        if (mulddaeCardState.currentStationCode !== latestMulddaeCrspState.currentStationCode) return;
+        mulddaeCardState.crspPct = latestMulddaeCrspState.crspPct;
+        updateMulddaeFlowPctState();
+    }
 
     // #17: rAF debounce — 같은 프레임 내 다중 호출을 1회로 통합
     let _mulddaeRenderPending = false;
@@ -1391,9 +1521,19 @@
         const mulddaeEl = document.getElementById('mulddaeInfo');
         if (!mulddaeCard || !mulddaeEl) return;
 
-        const { dateStr, stationCode, mulddaeBase, diff, rangePct } = mulddaeCardState;
+        const { dateStr, stationCode, mulddaeBase, diff, rangePct, correctedPct, badatimePct } = mulddaeCardState;
         const mulddae = { ...mulddaeBase };
-        if (Number.isFinite(rangePct)) mulddae.pct = clamp(Math.round(rangePct), 0, 100);
+
+        // 유속% 우선순위: ① 바다타임 실데이터 → ② 조차 계산값 (+ * 표시)
+        let _isBadatimeSource = false;
+        if (Number.isFinite(badatimePct)) {
+            mulddae.pct = clamp(Math.round(badatimePct), 0, 100);
+            _isBadatimeSource = true;
+        } else if (Number.isFinite(correctedPct)) {
+            mulddae.pct = clamp(Math.round(correctedPct), 0, 100);
+        } else if (Number.isFinite(rangePct)) {
+            mulddae.pct = clamp(Math.round(rangePct), 0, 100);
+        }
         _lastMulddaePct = mulddae.pct;
 
         mulddaeCard.style.display = '';
@@ -1407,7 +1547,7 @@
         const speciesFit = getSpeciesByMulddae(mulddae.num, mulddae.pct, diff);
 
         const pctValue = Number.isFinite(mulddae.pct) ? mulddae.pct : null;
-        const pctText = pctValue != null ? `${pctValue}%` : '-';
+        const pctText = pctValue != null ? `${pctValue}%${_isBadatimeSource ? '' : '*'}` : '-';
         const fishingInfo = (_fishingIndexInfo && _fishingIndexInfo.reqDate === dateStr)
             ? _fishingIndexInfo
             : null;
@@ -1433,11 +1573,12 @@
                     <img class="mulddae-moon" src="${getMoonPhaseIconSrc(mulddae.lunarDay)}" alt="달">
                     <span class="mulddae-num">${mulddae.num}</span>
                 </div>
-                <span class="mulddae-pct-value" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}; background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}12;">${pctText}</span>
+                <span class="mulddae-pct-value" title="${_isBadatimeSource ? '바다타임 실데이터' : '조차 기반 추정값 (*)'}" style="color:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}; background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color}12;">${pctText}</span>
                 <span class="mulddae-flow-desc">${desc}</span>
             </div>
             <div class="mulddae-flow-row">
                 <div class="mulddae-pct-bar"><div class="mulddae-pct-bar-fill" style="width:${pctValue != null ? pctValue : 0}%;background:${pctValue != null ? getMulddaeBarColor(pctValue) : mulddae.color};"></div></div>
+                ${!_isBadatimeSource && pctValue != null ? '<span class="mulddae-pct-source">* 조차 기반 추정</span>' : ''}
             </div>
             <div class="fishing-weather-row">
                 <span class="mulddae-flow-title">오늘의 날씨</span>
@@ -1997,13 +2138,32 @@
             mulddaeCardState = {
                 dateStr,
                 stationCode,
+                currentStationCode: getCurrentStation(),
                 mulddaeBase: getMulddaeInfo(dateStr),
                 diff,
-                rangePct
+                rangePct,
+                crspPct: null,
+                correctedPct: null,
+                badatimePct: null       // 바다타임 실데이터 (있으면 우선 사용)
             };
+            updateMulddaeFlowPctState();
+            applyLatestCrspToMulddaeState();
             renderMulddaeCardFromState();
 
-            // 백그라운드: ±15일 동적 MIN/MAX 로 재계산 (non-blocking)
+            // 백그라운드 ①: 바다타임 실데이터 조회 (최우선)
+            (async () => {
+                try {
+                    const btPct = await fetchBadatimeFlowPct(stationCode, dateStr);
+                    if (btPct != null && mulddaeCardState && mulddaeCardState.dateStr === dateStr && mulddaeCardState.stationCode === stationCode) {
+                        mulddaeCardState.badatimePct = btPct;
+                        renderMulddaeCardFromState();
+                    }
+                } catch (e) {
+                    console.warn('[badatime] 조회 실패, 계산값 fallback:', e.message);
+                }
+            })();
+
+            // 백그라운드 ②: ±15일 동적 MIN/MAX 로 재계산 (non-blocking, 바다타임 없을 때 fallback 개선)
             (async () => {
                 try {
                     let rangeData = getCachedTidalDiffs(stationCode, dateStr);
@@ -2015,6 +2175,7 @@
                         const dynamicPct = calcRangeFlowPct(diff, stationCode, rangeData);
                         if (dynamicPct != null) {
                             mulddaeCardState.rangePct = dynamicPct;
+                            updateMulddaeFlowPctState();
                             renderMulddaeCardFromState();
                         }
                     }
@@ -3625,6 +3786,41 @@
                 ? tenMinuteFiltered
                 : timeFiltered.filter((_, idx) => idx % 10 === 0);
             renderCurrentViews(filtered, infoEl, fldEbbSummary, areaSummary);
+
+            // 조류 최대유속 기반 보정치 계산 후 물때 %에 반영
+            try {
+                const speedList = filtered
+                    .map((item) => toFiniteNumber(extractByKeysCaseInsensitive(item, ['crsp', 'speed', 'spd'])))
+                    .filter((v) => Number.isFinite(v));
+                const todayMaxSpeed = speedList.length > 0 ? safeMax(speedList) : null;
+
+                const windowRows = await fetchCrspWindow(cStation, dateStr);
+                const windowMaxSpeeds = Array.isArray(windowRows)
+                    ? windowRows
+                        .map((row) => toFiniteNumber(extractByKeysCaseInsensitive(row, ['maxCrsp', 'max', 'crsp'])))
+                        .filter((v) => Number.isFinite(v))
+                    : null;
+                const crspPct = calcCrspFlowPct(todayMaxSpeed, windowMaxSpeeds);
+                latestMulddaeCrspState = {
+                    dateStr,
+                    stationCode,
+                    currentStationCode: cStation,
+                    crspPct
+                };
+
+                if (
+                    mulddaeCardState &&
+                    mulddaeCardState.dateStr === dateStr &&
+                    mulddaeCardState.stationCode === stationCode &&
+                    mulddaeCardState.currentStationCode === cStation
+                ) {
+                    mulddaeCardState.crspPct = crspPct;
+                    updateMulddaeFlowPctState();
+                }
+            } catch (e) {
+                console.warn('조류 보정치 계산 실패(조차 기반 % 유지):', e.message);
+            }
+
             renderMulddaeCardFromState();
 
             // 유속%는 조차(고저차) MinMax로만 계산 — crsp 절대값은 사리/조금 간 변동이 작아 % 과대표시됨
