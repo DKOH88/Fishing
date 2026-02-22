@@ -3959,7 +3959,7 @@
                 annotations['now_point'] = {
                     type: 'point', xValue: nowIdx, yValue: nowTideY,
                     backgroundColor: 'rgba(255,235,59,0.9)',
-                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
+                    radius: 5, borderWidth: 0,
                     yScaleID: 'yTide',
                 };
             }
@@ -3981,7 +3981,7 @@
                 annotations['now_point_speed'] = {
                     type: 'point', xValue: nowIdx, yValue: nowSpeedRaw,
                     backgroundColor: 'rgba(255,235,59,0.9)',
-                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
+                    radius: 5, borderWidth: 0,
                     yScaleID: 'ySpeed',
                 };
             }
