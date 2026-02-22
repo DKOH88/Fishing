@@ -3614,8 +3614,8 @@
         const fldEbbLine = (fldEbbSummary && (fldEbbSummary.fldTime || fldEbbSummary.ebbTime))
             ? ` · 창/낙조 ${fldText}${fldSpdText} / ${ebbText}${ebbSpdText}`
             : '';
-        const rawAreaUnit = areaSummary && areaSummary.unit ? areaSummary.unit : '';
-        const areaNeedsUnitConvert = currentSpeedUnit === 'kn' && rawAreaUnit === 'cm/s';
+        const rawAreaUnit = areaSummary && areaSummary.unit ? areaSummary.unit : 'cm/s';
+        const areaNeedsUnitConvert = currentSpeedUnit === 'kn' && (rawAreaUnit === 'cm/s' || rawAreaUnit === '');
         const areaUnit = areaNeedsUnitConvert ? 'k/n' : rawAreaUnit;
         const areaAvg = areaSummary && Number.isFinite(areaSummary.avgSpeed)
             ? (areaNeedsUnitConvert ? convertSpeedByUnit(areaSummary.avgSpeed) : areaSummary.avgSpeed)
@@ -3631,13 +3631,12 @@
             : '-';
         const areaDirText = areaSummary && areaSummary.dirText ? ` ${areaSummary.dirText}` : '';
         const areaLine = areaSummary
-            ? ` · 면조류 ${escapeHTML(areaSummary.areaName || '')} ${escapeHTML(areaSummary.timeLabel || '')} 평균 ${areaAvgText} / 최대 ${areaMaxText}${areaDirText} (n=${areaSummary.sampleCount})`
+            ? `<br>면조류 ${escapeHTML(areaSummary.timeLabel || '')} 기준 평균 ${areaAvgText}┃최대 ${areaMaxText}${areaDirText} (n=${areaSummary.sampleCount})`
             : '';
 
         el.innerHTML = `
             <div class="current-info-header">
-                예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong> ·
-                ${items[0]?.__timeLabel || '00:00'}~${items[items.length - 1]?.__timeLabel || '00:00'} 기준 <span style="font-size:0.9em">(총 ${items.length}건 · 10분 간격)</span>${fldEbbLine}${areaLine}
+                예보점: <strong style="color:var(--text)">${escapeHTML(items[0]?.obsvtrNm || '-')}</strong>┃${items[0]?.__timeLabel || '00:00'}~${items[items.length - 1]?.__timeLabel || '00:00'} 기준 <span style="font-size:0.9em">(총 ${items.length}건 · 10분 간격)</span>${fldEbbLine}${areaLine}
             </div>
             <div class="current-scroll">
             <table class="current-table">
