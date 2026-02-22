@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "validate:badatime": "node Playwright/validate-badatime-integrity.js"
+  },
+  "dependencies": {
+    "playwright": "^1.58.2"
+  }
+}
