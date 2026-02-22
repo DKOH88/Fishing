@@ -3924,6 +3924,7 @@
                 grid: { color: 'rgba(56,189,248,0.07)' },
                 border: { display: false },
                 title: { display: false },
+                afterFit(axis) { axis.width = 25; },
             };
         }
         if (hasSpeed) {
@@ -3945,6 +3946,7 @@
                 grid: { drawOnChartArea: false },
                 border: { display: false },
                 title: { display: false },
+                afterFit(axis) { axis.width = 25; },
             };
         }
 
