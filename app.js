@@ -3959,7 +3959,7 @@
                 annotations['now_point'] = {
                     type: 'point', xValue: nowIdx, yValue: nowTideY,
                     backgroundColor: 'rgba(255,235,59,0.9)',
-                    radius: 5, borderWidth: 0,
+                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
                     yScaleID: 'yTide',
                 };
             }
@@ -3981,7 +3981,7 @@
                 annotations['now_point_speed'] = {
                     type: 'point', xValue: nowIdx, yValue: nowSpeedRaw,
                     backgroundColor: 'rgba(255,235,59,0.9)',
-                    radius: 5, borderWidth: 0,
+                    radius: 5, borderColor: '#fff', borderWidth: 1.5,
                     yScaleID: 'ySpeed',
                 };
             }
@@ -4005,9 +4005,6 @@
                     content: '(' + nowTideY.toFixed(0) + ')',
                     color: '#38bdf8',
                     font: { size: 8, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 2, bottom: 2, left: 4, right: 4 },
-                    borderRadius: 3,
                     position: { x: 'start' },
                 };
             }
@@ -4031,9 +4028,6 @@
                     content: '(' + (currentSpeedUnit === 'kn' ? nowSpeedRaw.toFixed(1) : nowSpeedRaw.toFixed(0)) + ')',
                     color: '#34d399',
                     font: { size: 8, weight: 'bold' },
-                    backgroundColor: 'rgba(17,29,53,0.85)',
-                    padding: { top: 2, bottom: 2, left: 4, right: 4 },
-                    borderRadius: 3,
                     position: { x: 'end' },
                 };
             }
