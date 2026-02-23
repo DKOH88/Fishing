@@ -120,3 +120,4 @@
 ✅ [26-02-22┃23:26:28] 5fd3628 — chore: Playwright 분석/테스트 스크립트 및 package.json 추가
 ✅ [26-02-23┃00:13:20] f990fd4 — feat: Worker 주간 증분 검증 + 월간 전체 정합성 자동화
 ✅ [26-02-23┃07:27:39] 2b61c5f — feat: Cron 실행 마커 KV 기록 + /api/cron-status 엔드포인트 + commit-log 시간순 정렬
+✅ [26-02-23┃08:44:46] 733e453 — feat: 바다타임 26년 12월까지 KV 데이터 확장 + null 캐시 자동 퍼지
