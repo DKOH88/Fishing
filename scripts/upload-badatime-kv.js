@@ -12,7 +12,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CSV_PATH = path.join(__dirname, '..', 'data', 'badatime_all_ports_20250101_20260222.csv');
+const CSV_PATH = path.join(__dirname, '..', 'data', 'badatime_all_ports_20250101_20261231.csv');
 const OUT_PATH = path.join(__dirname, 'badatime-bulk.json');
 
 // CSV 파싱

@@ -10,13 +10,17 @@
  *
  * Usage:
  *   node Playwright/backfill-badatime-missing.js
+ *   node Playwright/backfill-badatime-missing.js --file=./data/badatime_all_ports_20250101_20261231.json
+ *   DATA_FILE=./data/badatime_all_ports_20250101_20261231.json node Playwright/backfill-badatime-missing.js
  */
 
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const DATA_FILE = path.resolve(__dirname, '..', 'data', 'badatime_all_ports_20250101_20260222.json');
+const DEFAULT_DATA_FILE = path.resolve(__dirname, '..', 'data', 'badatime_all_ports_20250101_20260222.json');
+const DATA_FILE_CLI = process.argv.find((arg) => arg.startsWith('--file=')) || '';
+const DATA_FILE_ENV = process.env.DATA_FILE || '';
 const REQUEST_DELAY_MS = 120;
 const CONCURRENCY = 3;
 const MAX_PASSES = 4;
@@ -44,6 +48,13 @@ function toYm(dt) {
 
 function ymdCompact(ymd) {
   return ymd.replace(/-/g, '');
+}
+
+function resolveDataFile() {
+  const cli = DATA_FILE_CLI.startsWith('--file=') ? DATA_FILE_CLI.slice('--file='.length).trim() : '';
+  const env = String(DATA_FILE_ENV || '').trim();
+  const raw = cli || env || DEFAULT_DATA_FILE;
+  return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
 }
 
 function listDates(startYmd, endYmd) {
@@ -246,6 +257,7 @@ function computeMissingMonths(byStationDateMap, expectedDates, expectedMonths) {
 }
 
 async function main() {
+  const DATA_FILE = resolveDataFile();
   if (!fs.existsSync(DATA_FILE)) {
     throw new Error(`dataset not found: ${DATA_FILE}`);
   }
@@ -402,4 +414,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-

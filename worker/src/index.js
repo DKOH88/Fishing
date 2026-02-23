@@ -1671,9 +1671,15 @@ async function handleBadatime(url, env, request, ctx) {
   const cacheKey = new Request(`https://cache.internal/badatime/${sid}/${date}`);
   const cached = await cache.match(cacheKey);
   if (cached) {
-    const resp = addCorsHeaders(cached, request);
-    resp.headers.set('X-Cache', 'HIT');
-    return resp;
+    // null 응답이 캐시된 경우 캐시 삭제 후 KV에서 다시 조회
+    const body = await cached.clone().json().catch(() => null);
+    if (body && body.flow_pct != null) {
+      const resp = addCorsHeaders(cached, request);
+      resp.headers.set('X-Cache', 'HIT');
+      return resp;
+    }
+    // 캐시된 null 응답 삭제
+    ctx.waitUntil(cache.delete(cacheKey));
   }
 
   // KV에서 해당 station 데이터 읽기
@@ -1697,13 +1703,19 @@ async function handleBadatime(url, env, request, ctx) {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': `public, max-age=${ttl}`,
+      'Cache-Control': flowPct != null ? `public, max-age=${ttl}` : 'no-store',
       'X-Cache': 'MISS',
       ...getCorsHeaders(request),
     },
   });
 
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  // null 응답은 캐시하지 않음 (KV 데이터 업데이트 후 즉시 반영되도록)
+  if (flowPct != null) {
+    ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  } else {
+    // 기존에 캐시된 null 응답이 있으면 삭제
+    ctx.waitUntil(cache.delete(cacheKey));
+  }
   return response;
 }
 

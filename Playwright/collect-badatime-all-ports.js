@@ -2,8 +2,8 @@
  * Collect badatime flow percent data for all ports visible on homepage (/id/tide links).
  *
  * Range:
- * - from 2025-01-01
- * - to   today (local date)
+ * - from START_DATE (or 2025-01-01 if omitted)
+ * - to   END_DATE (or today if omitted)
  *
  * Output:
  * - data/badatime_all_ports_YYYYMMDD_YYYYMMDD.json
@@ -12,6 +12,8 @@
  *
  * Usage:
  *   node Playwright/collect-badatime-all-ports.js
+ *   START_DATE=2026-02-01 END_DATE=2026-12-31 node Playwright/collect-badatime-all-ports.js
+ *   node Playwright/collect-badatime-all-ports.js --start=2026-02-01 --end=2026-12-31
  */
 
 const fs = require('fs');
@@ -19,10 +21,14 @@ const path = require('path');
 const https = require('https');
 
 const BASE_URL = 'https://www.badatime.com';
-const START_DATE = '2025-01-01';
+const DEFAULT_START_DATE = '2025-01-01';
 const REQUEST_DELAY_MS = 120;
 const CONCURRENCY = 3;
 const MERGE_PREVIOUS = true;
+const START_DATE_CLI = process.argv.find((arg) => arg.startsWith('--start=')) || '';
+const END_DATE_CLI = process.argv.find((arg) => arg.startsWith('--end=')) || '';
+const START_DATE_ENV = process.env.START_DATE || '';
+const END_DATE_ENV = process.env.END_DATE || '';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -47,6 +53,62 @@ function toYm(dt) {
 
 function ymdCompact(ymd) {
   return ymd.replace(/-/g, '');
+}
+
+function isValidYmd(ymd) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
+  const dt = toDate(ymd);
+  return !Number.isNaN(dt.getTime()) && toYmd(dt) === ymd;
+}
+
+function resolveEndDate() {
+  const cli = END_DATE_CLI.startsWith('--end=') ? END_DATE_CLI.slice('--end='.length).trim() : '';
+  const env = String(END_DATE_ENV || '').trim();
+  const raw = cli || env;
+  if (!raw) return toYmd(new Date());
+  if (!isValidYmd(raw)) {
+    throw new Error(`invalid end date: ${raw} (expected YYYY-MM-DD)`);
+  }
+  return raw;
+}
+
+function resolveStartDate() {
+  const cli = START_DATE_CLI.startsWith('--start=') ? START_DATE_CLI.slice('--start='.length).trim() : '';
+  const env = String(START_DATE_ENV || '').trim();
+  const raw = cli || env || DEFAULT_START_DATE;
+  if (!isValidYmd(raw)) {
+    throw new Error(`invalid start date: ${raw} (expected YYYY-MM-DD)`);
+  }
+  return raw;
+}
+
+function findMergeSeedJson(outputBase, startYmd, endYmd, preferredPath) {
+  const re = /^badatime_all_ports_(\d{8})_(\d{8})\.json$/;
+  const endObj = toDate(endYmd);
+  const candidates = [];
+
+  if (preferredPath && fs.existsSync(preferredPath)) {
+    candidates.push(preferredPath);
+  }
+  if (!fs.existsSync(outputBase)) return candidates[0] || null;
+
+  for (const name of fs.readdirSync(outputBase)) {
+    const m = name.match(re);
+    if (!m) continue;
+    const from = `${m[1].slice(0, 4)}-${m[1].slice(4, 6)}-${m[1].slice(6, 8)}`;
+    const to = `${m[2].slice(0, 4)}-${m[2].slice(4, 6)}-${m[2].slice(6, 8)}`;
+    if (from !== startYmd) continue;
+    if (toDate(to) > endObj) continue;
+    candidates.push(path.join(outputBase, name));
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => {
+    const ma = path.basename(a).match(re);
+    const mb = path.basename(b).match(re);
+    return ma[2].localeCompare(mb[2]);
+  });
+  return candidates[candidates.length - 1];
 }
 
 function listMonths(startYmd, endYmd) {
@@ -255,16 +317,25 @@ async function runQueue(jobs, workerFn, concurrency) {
 }
 
 async function main() {
-  const today = toYmd(new Date());
-  const months = listMonths(START_DATE, today);
-  const stamp = `${ymdCompact(START_DATE)}_${ymdCompact(today)}`;
+  const startDate = resolveStartDate();
+  const endDate = resolveEndDate();
+  if (toDate(endDate) < toDate(startDate)) {
+    throw new Error(`end date must be >= ${startDate}: ${endDate}`);
+  }
+
+  const months = listMonths(startDate, endDate);
+  const stamp = `${ymdCompact(startDate)}_${ymdCompact(endDate)}`;
   const outputBase = path.resolve(__dirname, '..', 'data');
   fs.mkdirSync(outputBase, { recursive: true });
   const jsonPath = path.join(outputBase, `badatime_all_ports_${stamp}.json`);
   const csvPath = path.join(outputBase, `badatime_all_ports_${stamp}.csv`);
   const summaryPath = path.join(outputBase, `badatime_all_ports_${stamp}_summary.csv`);
+  const mergeSeedPath = MERGE_PREVIOUS ? findMergeSeedJson(outputBase, startDate, endDate, jsonPath) : null;
 
-  console.log(`collecting badatime all ports from ${START_DATE} to ${today}`);
+  console.log(`collecting badatime all ports from ${startDate} to ${endDate}`);
+  if (mergeSeedPath) {
+    console.log(`merge seed file: ${path.basename(mergeSeedPath)}`);
+  }
 
   const portsFromHome = await collectPortsFromHomepage(6);
   if (portsFromHome.length === 0) {
@@ -274,9 +345,9 @@ async function main() {
 
   const portMap = new Map(portsFromHome.map((p) => [String(p.id), p.name || '']));
 
-  if (MERGE_PREVIOUS && fs.existsSync(jsonPath)) {
+  if (MERGE_PREVIOUS && mergeSeedPath && fs.existsSync(mergeSeedPath)) {
     try {
-      const prev = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      const prev = JSON.parse(fs.readFileSync(mergeSeedPath, 'utf8'));
       const prevStations = Array.isArray(prev?.stations) ? prev.stations : [];
       for (const s of prevStations) {
         const id = String(s?.station_id || '');
@@ -297,12 +368,6 @@ async function main() {
     .sort((a, b) => Number(a.id) - Number(b.id));
   console.log(`ports after merge-seed union: ${ports.length}`);
 
-  const jobs = [];
-  for (const p of ports) {
-    for (const ym of months) jobs.push({ id: p.id, ym });
-  }
-  console.log(`jobs: ${jobs.length} (${ports.length} ports x ${months.length} months)`);
-
   const portNameMap = new Map(ports.map((p) => [p.id, p.name]));
   const stationRows = new Map();       // id -> rows[]
   const stationFailed = new Map();     // id -> failed ym[]
@@ -310,9 +375,9 @@ async function main() {
   let done = 0;
 
   // Merge mode: keep previously collected rows and only add newly fetched rows.
-  if (MERGE_PREVIOUS && fs.existsSync(jsonPath)) {
+  if (MERGE_PREVIOUS && mergeSeedPath && fs.existsSync(mergeSeedPath)) {
     try {
-      const prev = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      const prev = JSON.parse(fs.readFileSync(mergeSeedPath, 'utf8'));
       const prevRows = Array.isArray(prev?.rows) ? prev.rows : [];
       for (const r of prevRows) {
         const id = String(r.station_id || '');
@@ -334,11 +399,37 @@ async function main() {
           stationSeenName.set(String(s.station_id), String(s.station_name));
         }
       }
-      console.log(`merge mode: loaded previous rows=${prevRows.length}`);
+      console.log(`merge mode: loaded previous rows=${prevRows.length} from ${path.basename(mergeSeedPath)}`);
     } catch (e) {
       console.warn(`merge mode load failed: ${e.message}`);
     }
   }
+
+  const existingYmByStation = new Map();
+  if (MERGE_PREVIOUS) {
+    for (const [sid, rows] of stationRows.entries()) {
+      const ymSet = new Set();
+      for (const r of rows) {
+        const ym = r.ym || String(r.date || '').slice(0, 7);
+        if (ym) ymSet.add(ym);
+      }
+      existingYmByStation.set(String(sid), ymSet);
+    }
+  }
+
+  const jobs = [];
+  let skippedJobs = 0;
+  for (const p of ports) {
+    const ymSet = existingYmByStation.get(p.id);
+    for (const ym of months) {
+      if (ymSet && ymSet.has(ym)) {
+        skippedJobs++;
+        continue;
+      }
+      jobs.push({ id: p.id, ym });
+    }
+  }
+  console.log(`jobs: ${jobs.length} (skipped ${skippedJobs} already-captured months)`);
 
   await runQueue(
     jobs,
@@ -369,8 +460,8 @@ async function main() {
     CONCURRENCY
   );
 
-  const startDateObj = toDate(START_DATE);
-  const endDateObj = toDate(today);
+  const startDateObj = toDate(startDate);
+  const endDateObj = toDate(endDate);
   const flatRows = [];
   const stationSummary = [];
 
@@ -422,7 +513,7 @@ async function main() {
   const jsonObj = {
     source: BASE_URL,
     generated_at: new Date().toISOString(),
-    range: { from: START_DATE, to: today },
+    range: { from: startDate, to: endDate },
     ports_count: ports.length,
     rows_count: flatRows.length,
     failed_jobs_count: [...stationSummary].reduce((s, x) => s + x.failed_months.length, 0),
